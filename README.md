@@ -38,3 +38,14 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 点击反馈：按钮使用 Ripple 和短时缩放动画，耗时操作附 Toast；任务是否运行在概览显示。
 
 注意：本交付是 Android Studio 源码工程；当前生成环境没有 Android SDK，未能运行 assembleDebug。建议在 GitHub Actions 编译并以构建日志确认。
+
+## v1.6.0 界面与扫描优化
+
+- 全局 ART 扫描期间锁定概览导航；尝试进入其他页面会提示扫描进行中。
+- 应用管理移除列表标题和搜索栏；操作按钮上移；用户/系统应用以整行等宽 Tab 展示，应用列表限定 450dp 高度独立滚动。
+- 自定义分组列表限定 380dp 独立滚动；任务历史和实时日志分别限定 340dp 与 280dp 独立滚动。
+- 编译和重置结束后，解析任务 `details`，只对返回成功的包名重新读取 ART 状态，不再触发 `scanArt()` 全量扫描。跳过项和失败项不进行额外状态读取。
+- 增量应用扫描入口从概览移到应用管理；概览删除任务记录快捷按钮。记录仍通过底部「记录」Tab 访问。
+- 注意：首次启动或手动「刷新全局 ART」仍会完整扫描。后台 WorkManager 的增量判定独立于前台 ART 状态缓存。
+
+构建验证：当前交付环境未安装 Android SDK，尚未真实运行 Gradle assembleDebug；项目 ZIP 和静态代码检查不等同于 Android 编译通过。
