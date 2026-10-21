@@ -10,7 +10,7 @@ public class IncrementalWorker extends Worker {
  @NonNull @Override public Result doWork(){
   if(!Store.auto(getApplicationContext()))return Result.success();
   if(!Engine.rootOk())return Result.retry();
-  org.json.JSONObject record=Engine.run(getApplicationContext(),true,null,null);
+  org.json.JSONObject record=Engine.runScheduled(getApplicationContext(),null);
   if(record==null)return Result.retry();
   return Result.success();
  }

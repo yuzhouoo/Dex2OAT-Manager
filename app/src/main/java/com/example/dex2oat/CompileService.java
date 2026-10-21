@@ -33,7 +33,7 @@ public final class CompileService extends Service {
   try{executor.execute(()->{
    try{
     JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog);
-    String end=record==null?"任务异常":("成功 "+record.optInt("success")+" · 失败 "+record.optInt("failed")+" · 跳过 "+record.optInt("skipped"));
+    String end=record==null?"任务异常":("已处理 "+record.optInt("processed")+"/"+record.optInt("requested")+" · 成功 "+record.optInt("success")+" · 失败 "+record.optInt("failed")+" · 跳过 "+record.optInt("skipped")+" · 未处理 "+record.optInt("pending"));
     TaskRuntime.finish(end);
    }catch(Throwable ex){TaskRuntime.finish("执行失败："+ex.getClass().getSimpleName());}
    finally{Engine.releaseReserved();postProgress(true);stopForeground(STOP_FOREGROUND_DETACH);stopSelf(startId);}

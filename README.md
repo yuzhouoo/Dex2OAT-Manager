@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.5
+# Dex2OAT Manager v1.6.6
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -88,3 +88,9 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 引入有界日志 revision，250 条上限后仍然持续刷新；单条新增优先局部更新。
 - onResume 主动同步任务状态；预留任务与实际运行状态分离显示，避免虚假“正在执行”。
 - 前台服务启动及任务调度异常路径释放互斥锁，任务结束统一清理。
+
+## v1.6.6 批量任务完整记录
+- 用户手动发起的批量/增量编译不再应用隐式 7 分钟超时；自动 WorkManager 周期扫描仍受 7 分钟应用内预算约束。
+- 每个目标都有成功、失败、已达标跳过、Profile 待重试、未处理、用户取消或不可见记录，明确显示计划总数与完成数。
+- speed-profile 处于 verify 不再被永久视为已达标；手动增量允许重新编译，自动任务对缺少 Profile 的同版本应用设置约 24 小时重试间隔，减少发热和损耗。
+- speed-profile 编译命令成功不能保证 ART 最终立即变成 speed-profile；实际状态仍应以后续 pm art dump 为准。
