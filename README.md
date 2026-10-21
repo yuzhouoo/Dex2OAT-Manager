@@ -35,3 +35,13 @@
 ## GitHub Actions SDK 修复（2026-10-21）
 
 构建工作流已移除 `android-actions/setup-android@v3`，避免 `sdkmanager` 安装已失效的 `tools` 包时出现 `Warning: Failed to find package 'tools'`。直接通过 Runner 预装的 SDK command-line tools 安装 `platforms;android-36` 和 `build-tools;36.0.0`。GitHub Actions 仍需在真实 Runner 中验证。
+
+
+## v1.2.0 UI 优化
+- 四个独立导航页：概览、应用、策略、记录。
+- 概览展示 KernelSU Root 状态、编译统计和快捷操作。
+- 应用页承载搜索、多选及按策略编译。
+- 策略页集中管理全局编译模式、定时增量编译和自定义分组。
+- 记录页展示执行历史、运行日志和停止任务。
+- 使用统一背景色、卡片间距和主次按钮层级；底层 ART/Root 逻辑不变。
+- 注意：源码未在目标手机或 CI 中完成实编译验证。
