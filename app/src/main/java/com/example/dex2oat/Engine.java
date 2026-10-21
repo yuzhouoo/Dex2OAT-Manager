@@ -50,7 +50,7 @@ final class Engine {
   STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
    List<PackageInfo> installed=Store.installedAll(context);Map<String,PackageInfo> byPkg=new HashMap<>();for(PackageInfo p:installed)byPkg.put(p.packageName,p);
-   List<String> pkgs=new ArrayList<>();if(targets==null){for(PackageInfo pi:Store.installed(context))pkgs.add(pi.packageName);}else {LinkedHashSet<String> unique=new LinkedHashSet<>(targets);for(String p:unique){if(byPkg.containsKey(p))pkgs.add(p);else {missing++;addDetail(details,p,"","missing","应用已卸载或不可见",-1,"开始前无法找到安装包");}}}
+   List<String> pkgs=new ArrayList<>();if(targets==null){for(PackageInfo pi:Store.installed(context))pkgs.add(pi.packageName);}else {LinkedHashSet<String> unique=new LinkedHashSet<>(targets);for(String p:unique){if(byPkg.containsKey(p))pkgs.add(p);else {missing++;addDetail(details,p,"","missing",-1,"应用已卸载或不可见：开始前无法找到安装包");}}}
    Collections.sort(pkgs);
    JSONObject marks=Store.marks(context);
    for(int i=0;i<pkgs.size();i++){
