@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.2
+# Dex2OAT Manager v1.6.3
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -66,3 +66,13 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - ART 状态解析增加 everything 标记兼容。
 - 实际编译仍通过 `cmd package compile -m everything -f <package>`，设备不支持时显示失败，不自动降级。
 - 强烈建议先以单个普通应用测试，再考虑全局或自动任务；不建议默认设为 everything。
+
+## v1.6.3 界面与任务控制更新
+
+- 概览：移除“编译概览”标题；总数/已完成/待处理/未知四列可点击查看当前缓存的应用与编译模式（只读，不发起 ART 查询）。
+- 当前任务：编译和 ART 状态刷新期间均可发送停止请求；ART 扫描在收到请求后停止查询后续包名，正在执行的一次 `su` 查询可能需要短暂退出。
+- 应用：移除“应用管理”标题；用户/系统应用改为一个共用底座的等宽双 Tab。
+- 策略：改为“全局默认编译模式”、“开启自动周期扫描”、“新建编译分组”；删除多余的分组章节标题。
+- 记录：移除“任务执行记录”标题。
+
+已做源代码结构与 Java 语法层面的检查，当前环境不包含 Android SDK / Gradle，**未实际执行 Android APK 编译**。

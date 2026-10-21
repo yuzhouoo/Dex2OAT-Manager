@@ -14,12 +14,14 @@ final class Engine {
  private static volatile boolean STOP=false;
  private static volatile Process ACTIVE;
  private static volatile boolean SCAN=false;
- static synchronized boolean beginScan(){if(BUSY.get())return false;SCAN=true;BUSY.set(true);return true;}
+ private static volatile boolean SCAN_STOP=false;
+ static synchronized boolean beginScan(){if(BUSY.get())return false;SCAN_STOP=false;SCAN=true;BUSY.set(true);return true;}
  static synchronized void endScan(){if(SCAN){SCAN=false;BUSY.set(false);}}
  static synchronized boolean reserveTask(){if(BUSY.get())return false;BUSY.set(true);return true;}
  static boolean scanning(){return SCAN;}
+ static boolean scanCancelled(){return SCAN_STOP;}
  static boolean busy(){return BUSY.get();}
- static void stop(){STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
+ static void stop(){if(SCAN)SCAN_STOP=true;else STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
  static class Result{final int code;final String out;Result(int c,String o){code=c;out=o;}}
  static Result root(String command,long timeout){Process p=null;ByteArrayOutputStream data=new ByteArrayOutputStream();
   try{
