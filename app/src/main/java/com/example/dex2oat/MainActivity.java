@@ -1,6 +1,8 @@
 package com.example.dex2oat;
 
 import android.app.*;
+import android.content.Intent;
+import android.Manifest;
 import android.os.*;
 import android.content.pm.*;
 import android.graphics.Typeface;
@@ -24,11 +26,12 @@ public class MainActivity extends Activity {
  private RecyclerView appsList,groupsList,historyList;
  private CheckBox classSelect; private TextView classCounter;
  private int userScroll=0, systemScroll=0; private Boolean renderedSystemTab=null;
- private LinearLayout[] screens=new LinearLayout[4];
- private TextView[] navLabels=new TextView[4];
+ private LinearLayout[] screens=new LinearLayout[5];
+ private TextView[] navLabels=new TextView[5];
  private int activeTab=0;
  private static final int BG=0xffF5F7FB, INK=0xff17243B, MUTED=0xff6D7B91, ACCENT=0xff425BD8, BORDER=0xffE4E9F2;
- private TextView stats,log,root, globalTaskLabel;
+ private TextView stats,root, globalTaskLabel;
+ private RecyclerView logsList; private int logCount=-1; private boolean followLogs=true;
  private ProgressBar globalProgress;
  private LinearLayout statsGrid, appListRows;
  private volatile int scanDone=0,scanTotal=0;
@@ -39,7 +42,8 @@ public class MainActivity extends Activity {
  private Button stopTaskButton,userAppTab,systemAppTab;
  private boolean systemTab=false;
  private final Handler taskHandler=new Handler(Looper.getMainLooper());
- private final Runnable taskPulse=new Runnable(){public void run(){updateTaskState();taskHandler.postDelayed(this,1200);}};
+ private boolean watchedServiceTask=false;
+ private final Runnable taskPulse=new Runnable(){public void run(){refreshLogs();TaskRuntime.Snapshot t=TaskRuntime.snapshot();if(t.running)watchedServiceTask=true;else if(watchedServiceTask&&!Engine.busy()){watchedServiceTask=false;showHistory();pool.execute(()->{JSONObject h=Store.history(getApplicationContext()).optJSONObject(0);refreshTaskPackages(h);});}updateTaskState();taskHandler.postDelayed(this,1200);}};
  
  private final Set<String> selected=new HashSet<>();
  private List<PackageInfo> packages=new ArrayList<>();
@@ -48,7 +52,7 @@ public class MainActivity extends Activity {
  private boolean loading=false;
  private final Map<String,ArtState.Entry> artStates=new ConcurrentHashMap<>();
  private volatile boolean scanning=false;
- @Override public void onCreate(Bundle b){super.onCreate(b);build();reload();IncrementalWorker.schedule(this);refreshRoot();scanArt();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);build();if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},201);reload();IncrementalWorker.schedule(this);refreshRoot();scanArt();}
  private GradientDrawable shape(int color,int stroke,int rad){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(rad));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
  private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(INK);t.setPadding(dp(3),dp(5),dp(3),dp(5));return t;}
  private void heading(String title){TextView v=text(title,17);v.setTextColor(INK);v.setTypeface(null,Typeface.BOLD);v.setPadding(0,dp(15),0,dp(10));page.addView(v);}
@@ -77,9 +81,9 @@ public class MainActivity extends Activity {
   LinearLayout titleRow=new LinearLayout(this);titleRow.setGravity(Gravity.CENTER_VERTICAL);header.addView(titleRow);TextView title=text("Dex2OAT",23);title.setTypeface(null,Typeface.BOLD);titleRow.addView(title);root=text("（Root 检测中）",12);root.setTextColor(MUTED);titleRow.addView(root);
   LinearLayout progressShell=vertical();progressShell.setPadding(dp(19),dp(7),dp(19),dp(8));progressShell.setBackground(shape(0xffEEF2FF,0,0));shell.addView(progressShell);globalTaskLabel=text("✓ 当前空闲",12);globalTaskLabel.setTextColor(0xff16866F);progressShell.addView(globalTaskLabel);globalProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);globalProgress.setMax(100);globalProgress.setVisibility(View.GONE);progressShell.addView(globalProgress,new LinearLayout.LayoutParams(-1,dp(4)));
   LinearLayout tabs=new LinearLayout(this);tabs.setPadding(dp(12),dp(7),dp(12),dp(7));tabs.setBackgroundColor(Color.WHITE);shell.addView(tabs);
-  String[] names={"概览","应用","策略","记录"};String[] icons={"◈","▦","⚙","◷"};
-  for(int i=0;i<4;i++){final int tab=i;TextView label=text(icons[i]+" "+names[i],13);label.setGravity(Gravity.CENTER);label.setPadding(dp(2),dp(11),dp(2),dp(11));tabs.addView(label,new LinearLayout.LayoutParams(0,-2,1));navLabels[i]=label;label.setOnClickListener(v->switchPage(tab));}
-  for(int i=0;i<4;i++){ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);page=vertical();page.setPadding(dp(18),dp(17),dp(18),dp(28));scroll.addView(page);shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));screens[i]=page;page.setTag(scroll);}
+  String[] names={"概览","应用","策略","记录","日志"};String[] icons={"◈","▦","⚙","◷","≡"};
+  for(int i=0;i<5;i++){final int tab=i;TextView label=text(icons[i]+" "+names[i],13);label.setGravity(Gravity.CENTER);label.setPadding(dp(2),dp(11),dp(2),dp(11));tabs.addView(label,new LinearLayout.LayoutParams(0,-2,1));navLabels[i]=label;label.setOnClickListener(v->switchPage(tab));}
+  for(int i=0;i<5;i++){ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);page=vertical();page.setPadding(dp(18),dp(17),dp(18),dp(28));scroll.addView(page);shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));screens[i]=page;page.setTag(scroll);}
   // Each content view is attached to its own scrolling host.
   page=screens[0];
   
@@ -105,11 +109,16 @@ public class MainActivity extends Activity {
   TextView sub=smallLabel("分组策略优先于全局模式，每个应用只能加入一个分组。");page.addView(sub);
   LinearLayout groupHost=card(null);groupsList=createList(groupHost,300);
   page=screens[3];LinearLayout historyActions=card(null);button("清空执行历史",historyActions,()->new AlertDialog.Builder(this).setMessage("清空任务记录？成功编译标记将保留。") .setNegativeButton("取消",null).setPositiveButton("清空",(d,w)->{Store.clearHistory(this);showHistory();}).show());LinearLayout historyCard=card(null);historyList=createList(historyCard,260);
-  heading("实时日志");LinearLayout logCard=card(null);log=text("暂无正在执行的任务",12);log.setTextIsSelectable(true);log.setTextColor(MUTED);ScrollView logScroll=new ScrollView(this);logScroll.setFillViewport(false);logScroll.setOnTouchListener((v,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)v.getParent().requestDisallowInterceptTouchEvent(true);if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL)v.getParent().requestDisallowInterceptTouchEvent(false);return false;});logCard.addView(logScroll,new LinearLayout.LayoutParams(-1,dp(280)));logScroll.addView(log);
-  switchPage(0);taskHandler.post(taskPulse);
+  page=screens[4];page.setPadding(dp(10),dp(5),dp(10),dp(5));
+  logsList=createList(page,520);logsList.addOnScrollListener(new RecyclerView.OnScrollListener(){
+   @Override public void onScrolled(RecyclerView rv,int dx,int dy){if(dy<0)followLogs=false;else if(!rv.canScrollVertically(1))followLogs=true;}
+  });
+  refreshLogs();
+  switchPage(getIntent().getBooleanExtra("open_logs",false)?4:0);taskHandler.post(taskPulse);
  }
  private void reload(){packages=Store.installedAll(this);showApps();showGroups();showHistory();updateStats();}
- @Override protected void onResume(){super.onResume();if(root!=null)refreshRoot();}
+ @Override protected void onResume(){super.onResume();if(root!=null)refreshRoot();refreshLogs();showHistory();}
+ @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("open_logs",false))switchPage(4);}
  private void refreshRoot(){if(Engine.busy())return;pool.execute(()->{if(Engine.busy())return;boolean ok=Engine.rootOk();ui.post(()->{root.setText(ok?"（Root 已授权）":"（Root 未授权）");root.setTextColor(ok?0xff188269:0xffC85A3C);});});}
  private void scanArt(){if(!Engine.beginScan()){taskBlocked();return;}scanning=true;scanDone=0;scanTotal=packages.size();phase="正在获取 ART 状态";updateTaskState();pool.execute(()->{try{if(!Engine.rootOk())return;for(PackageInfo p:new ArrayList<>(packages)){if(Engine.scanCancelled())break;artStates.put(p.packageName,ArtState.query(p.packageName));scanDone++;if(scanDone%8==0)ui.post(()->{if(activeTab==2)showGroups();updateStats();updateTaskState();});}}finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showApps();showGroups();updateStats();updateTaskState();});}}); }
  private void refreshTaskPackages(JSONObject record){
@@ -123,7 +132,7 @@ public class MainActivity extends Activity {
   try{for(String pkg:changed){if(Engine.scanCancelled())break;artStates.put(pkg,ArtState.query(pkg));scanDone++;if(scanDone%4==0)ui.post(this::updateTaskState);}}
   finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showApps();showGroups();updateStats();updateTaskState();});}
  }
- private void confirmReset(List<String> target){if(blocked())return;if(target.isEmpty()){toast("请先选择应用");return;}new AlertDialog.Builder(this).setTitle("确认重置编译").setMessage("将对选中的 "+target.size()+" 个应用执行 pm compile --reset。不会清除应用数据，但将改变 ART 优化状态。") .setNegativeButton("取消",null).setPositiveButton("重置",(d,w)->{if(blocked())return;if(!Engine.reserveTask()){taskBlocked();return;}log.setText("开始重置编译...");toast("正在启动重置任务");updateTaskState();pool.execute(()->{JSONObject rec=Engine.resetReserved(this,target,this::append);refreshTaskPackages(rec);ui.post(()->{reload();updateTaskState();if(rec==null)toast("任务未能启动");});});}).show();}
+ private void confirmReset(List<String> target){if(blocked())return;if(target.isEmpty()){toast("请先选择应用");return;}new AlertDialog.Builder(this).setTitle("确认重置编译").setMessage("将对选中的 "+target.size()+" 个应用执行 pm compile --reset。不会清除应用数据，但将改变 ART 优化状态。") .setNegativeButton("取消",null).setPositiveButton("重置",(d,w)->{if(blocked())return;if(!Engine.reserveTask()){taskBlocked();return;}toast("正在启动重置任务");launchCompileService(target,true,false);}).show();}
  private boolean isSystemApp(PackageInfo p){return p.applicationInfo!=null&&(p.applicationInfo.flags&(ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;}
  private List<PackageInfo> filtered(){List<PackageInfo> list=new ArrayList<>();PackageManager pm=getPackageManager();for(PackageInfo p:packages){if(p.applicationInfo==null||isSystemApp(p)!=systemTab)continue;String name=String.valueOf(pm.getApplicationLabel(p.applicationInfo));list.add(p);}return list;}
  private RecyclerView createList(LinearLayout host,int height){RecyclerView v=new RecyclerView(this);v.setLayoutManager(new LinearLayoutManager(this));v.setNestedScrollingEnabled(true);v.setHasFixedSize(true);v.setVerticalScrollBarEnabled(true);v.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);v.setOnTouchListener((view,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)view.getParent().requestDisallowInterceptTouchEvent(true);if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);return false;});host.addView(v,new LinearLayout.LayoutParams(-1,dp(height)));return v;}
@@ -168,7 +177,7 @@ public class MainActivity extends Activity {
   new AlertDialog.Builder(this).setTitle(names[category]+"（"+rows.size()+"）").setView(content).setPositiveButton("关闭",null).show();
  }
  private void updateStats(){if(stats==null)return;JSONObject marks=Store.marks(this);int historical=0,matched=0,unknown=0;for(PackageInfo p:packages){String wanted=Store.chosenMode(this,p.packageName);if((Store.fingerprint(p)+"|"+wanted).equals(marks.optString(p.packageName)))historical++;ArtState.Entry st=artStates.get(p.packageName);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,wanted))matched++;}renderMetrics(packages.size(),matched,packages.size()-matched-unknown,unknown);stats.setText("历史成功记录："+historical+" 个  ·  实时状态以 ART 查询为准");}
- private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning(),busy=Engine.busy(),compiling=busy&&!scanningNow;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?"正在执行编译 / 重置任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(busy);stopTaskButton.setAlpha(busy?1f:.45f);}}
+ private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning(),busy=Engine.busy(),compiling=busy&&!scanningNow;TaskRuntime.Snapshot live=TaskRuntime.snapshot();String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(busy);stopTaskButton.setAlpha(busy?1f:.45f);}}
  private List<String> groupMismatch(JSONObject group){List<String> mismatch=new ArrayList<>();JSONArray pk=group.optJSONArray("packages");if(pk==null)return mismatch;String mode=group.optString("mode");for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry st=artStates.get(pkg);if(st!=null&&st.known&&!ArtState.matches(st,mode))mismatch.add(pkg);}return mismatch;}
  private void refreshGroup(JSONObject group){JSONArray pk=group.optJSONArray("packages");if(pk==null)return;if(blocked())return;new AlertDialog.Builder(this).setTitle("确认刷新分组 ART 状态").setMessage("即将查询本组 "+pk.length()+" 个应用的实时 ART 状态，期间无法启动编译或其他扫描。") .setNegativeButton("取消",null).setPositiveButton("刷新",(d,w)->runGroupScan(pk)).show();}
  private void runGroupScan(JSONArray pk){if(!Engine.beginScan()){taskBlocked();return;}scanDone=0;scanTotal=pk.length();scanning=true;phase="正在刷新分组 ART 状态";updateTaskState();pool.execute(()->{try{for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);artStates.put(pkg,ArtState.query(pkg));scanDone++;}}finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showGroups();updateStats();updateTaskState();toast("分组状态刷新完成");});}}); }
@@ -196,8 +205,17 @@ public class MainActivity extends Activity {
   List<CheckBox> checks=new ArrayList<>();for(int i=0;i<entries.length();i++){JSONObject e=entries.optJSONObject(i);if(e==null)continue;String pkg=e.optString("pkg");CheckBox cb=new CheckBox(this);cb.setText((e.optBoolean("ok")?"✓ ":"✗ ")+pkg+"（"+e.optString("mode")+"）\n"+e.optString("output"));cb.setTextSize(12);rows.addView(cb);checks.add(cb);cb.setOnCheckedChangeListener((v,selected)->{if(selected)picked.add(pkg);else picked.remove(pkg);counter.setText("已选 "+picked.size()+" / "+checks.size());});}
   selectAll.setOnCheckedChangeListener((v,all)->{for(CheckBox cb:checks)cb.setChecked(all);});AlertDialog dlg=new AlertDialog.Builder(this).setTitle("任务详情").setView(body).setNegativeButton("关闭",null).setPositiveButton("重置选中应用",null).create();dlg.setOnShowListener(d->dlg.getButton(-1).setOnClickListener(v->{if(picked.isEmpty()){toast("请先选择包名");return;}dlg.dismiss();confirmReset(new ArrayList<>(picked));}));dlg.show();}
  private List<String> installedTargetSnapshot(){List<String> snapshot=new ArrayList<>();for(PackageInfo p:Store.installed(this))snapshot.add(p.packageName);return snapshot;}
- private void start(boolean incremental,List<String> targets){if(blocked())return;final List<String> frozenTargets=targets==null?installedTargetSnapshot():new ArrayList<>(new LinkedHashSet<>(targets));if(!Engine.reserveTask()){taskBlocked();return;}log.setText("准备执行…");toast("编译任务正在启动");updateTaskState();pool.execute(()->{JSONObject result=Engine.runReserved(this,incremental,frozenTargets,this::append);refreshTaskPackages(result);ui.post(()->{reload();updateTaskState();if(result==null)toast("任务未启动：已有任务占用或执行异常");});});}
- private void append(String s){ui.post(()->{String text=log.getText().toString()+"\n"+s;if(text.length()>16000)text=text.substring(text.length()-16000);log.setText(text);});}
+ private void start(boolean incremental,List<String> targets){if(blocked())return;final List<String> frozenTargets=targets==null?installedTargetSnapshot():new ArrayList<>(new LinkedHashSet<>(targets));if(!Engine.reserveTask()){taskBlocked();return;}toast("编译任务正在启动");launchCompileService(frozenTargets,false,incremental);}
+ private void launchCompileService(List<String> targets,boolean reset,boolean incremental){
+  Intent intent=new Intent(this,CompileService.class).setAction(CompileService.ACTION_RUN);
+  intent.putStringArrayListExtra(CompileService.EXTRA_PACKAGES,new ArrayList<>(targets));
+  intent.putExtra(CompileService.EXTRA_RESET,reset);
+  intent.putExtra(CompileService.EXTRA_INCREMENTAL,incremental);
+  try{startForegroundService(intent);updateTaskState();}
+  catch(Exception e){Engine.releaseReserved();toast("前台服务启动失败："+e.getMessage());updateTaskState();}
+ }
+ private void refreshLogs(){if(logsList==null)return;List<String> rows=TaskRuntime.logs();if(rows.size()==logCount)return;logCount=rows.size();logsList.setAdapter(adapter(rows.size(),i->{TextView t=smallLabel(rows.get(i));t.setTextSize(12);t.setTextIsSelectable(true);t.setPadding(dp(8),dp(6),dp(8),dp(6));return t;}));if(followLogs&&rows.size()>0)logsList.scrollToPosition(rows.size()-1);}
+ private void append(String s){TaskRuntime.line(s);ui.post(this::refreshLogs);}
  private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
  @Override protected void onDestroy(){taskHandler.removeCallbacks(taskPulse);pool.shutdown();super.onDestroy();}
 }

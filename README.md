@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.3
+# Dex2OAT Manager v1.6.4
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -76,3 +76,8 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 记录：移除“任务执行记录”标题。
 
 已做源代码结构与 Java 语法层面的检查，当前环境不包含 Android SDK / Gradle，**未实际执行 Android APK 编译**。
+
+## v1.6.4
+- 独立日志 Tab（最多 250 条），支持查看编译实时进度。
+- 手动编译、重置通过前台服务执行，通知栏提供进度、详情、停止入口。
+- Android 16 后台运行受系统限制；ART 全局扫描仍在 Activity 中，周期任务仍由 WorkManager 调度。

@@ -21,6 +21,7 @@ final class Engine {
  static boolean scanning(){return SCAN;}
  static boolean scanCancelled(){return SCAN_STOP;}
  static boolean busy(){return BUSY.get();}
+ static synchronized void releaseReserved(){if(!SCAN)BUSY.set(false);}
  static void stop(){if(SCAN)SCAN_STOP=true;else STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
  static class Result{final int code;final String out;Result(int c,String o){code=c;out=o;}}
  static Result root(String command,long timeout){Process p=null;ByteArrayOutputStream data=new ByteArrayOutputStream();
@@ -52,12 +53,13 @@ final class Engine {
     if(STOP || (incremental && System.currentTimeMillis()-started>420000L))break;String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
     String key=Store.fingerprint(p)+"|"+filter;
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
-    if(incremental){ArtState.Entry st=ArtState.query(pkg);if(ArtState.matches(st,filter)){skipped++;continue;}
-     if(key.equals(marks.optString(pkg)) && "speed-profile".equals(filter) && "verify".equals(st.filter)){skipped++;if(listener!=null)listener.update("暂缓："+pkg+"（缺少有效 Profile 或 ART 回退至 verify）");continue;}
+    if(incremental){ArtState.Entry st=ArtState.query(pkg);if(ArtState.matches(st,filter)){skipped++;TaskRuntime.skipped();continue;}
+     if(key.equals(marks.optString(pkg)) && "speed-profile".equals(filter) && "verify".equals(st.filter)){skipped++;TaskRuntime.skipped();if(listener!=null)listener.update("暂缓："+pkg+"（缺少有效 Profile 或 ART 回退至 verify）");continue;}
     }
+    TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] "+pkg+" · "+filter);
     Result r=root(reset?"cmd package compile --reset "+shellQuote(pkg):"cmd package compile -m "+filter+" -f "+shellQuote(pkg),240000);
-    boolean success=!STOP && compileSuccess(r);if(success){ok++;try{if(reset)marks.remove(pkg);else marks.put(pkg,key);Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
+    boolean success=!STOP && compileSuccess(r);TaskRuntime.outcome(success);if(success){ok++;try{if(reset)marks.remove(pkg);else marks.put(pkg,key);Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
     JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
     if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+("everything".equals(filter)&&!success?"设备可能不支持 everything；请改用 speed。":"")+r.out.trim());
    }

@@ -1,0 +1,60 @@
+package com.example.dex2oat;
+
+import android.app.*;
+import android.content.*;
+import android.content.pm.ServiceInfo;
+import android.os.*;
+import org.json.JSONObject;
+import java.util.*;
+import java.util.concurrent.*;
+
+/** A user-started foreground service for long manual compilation/reset work. */
+public final class CompileService extends Service {
+ static final String ACTION_RUN="com.example.dex2oat.RUN";
+ static final String ACTION_STOP="com.example.dex2oat.STOP";
+ static final String EXTRA_PACKAGES="packages", EXTRA_RESET="reset", EXTRA_INCREMENTAL="incremental";
+ private static final int ID=4106;
+ private static final String CHANNEL="dex2oat_task";
+ private final ExecutorService executor=Executors.newSingleThreadExecutor();
+ private NotificationManager notifications;
+ private long lastUpdate;
+
+ @Override public void onCreate(){super.onCreate();notifications=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);notifications.createNotificationChannel(new NotificationChannel(CHANNEL,"Dex2OAT 任务进度",NotificationManager.IMPORTANCE_LOW));}
+ @Override public int onStartCommand(Intent intent,int flags,int startId){
+  if(intent==null)return START_NOT_STICKY;
+  if(ACTION_STOP.equals(intent.getAction())){Engine.stop();TaskRuntime.line("收到停止请求");postProgress(true);return START_NOT_STICKY;}
+  if(!ACTION_RUN.equals(intent.getAction()))return START_NOT_STICKY;
+  final ArrayList<String> pkgs=intent.getStringArrayListExtra(EXTRA_PACKAGES);
+  final boolean reset=intent.getBooleanExtra(EXTRA_RESET,false);
+  final boolean incremental=intent.getBooleanExtra(EXTRA_INCREMENTAL,false);
+  if(pkgs==null){Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
+  TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());
+  startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+  executor.execute(()->{
+   try{
+    JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog);
+    String end=record==null?"任务异常":("成功 "+record.optInt("success")+" · 失败 "+record.optInt("failed")+" · 跳过 "+record.optInt("skipped"));
+    TaskRuntime.finish(end);
+   }catch(Throwable ex){TaskRuntime.finish("执行失败："+ex.getClass().getSimpleName());}
+   finally{postProgress(true);stopForeground(STOP_FOREGROUND_DETACH);stopSelf(startId);}
+  });
+  return START_NOT_STICKY;
+ }
+ private void onLog(String s){TaskRuntime.line(s);postProgress(false);}
+ private void postProgress(boolean force){long now=SystemClock.elapsedRealtime();if(!force&&now-lastUpdate<1200)return;lastUpdate=now;notifications.notify(ID,notification(force&&!TaskRuntime.snapshot().running));}
+ private Notification notification(boolean complete){
+  TaskRuntime.Snapshot s=TaskRuntime.snapshot();
+  Intent open=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra("open_logs",true);
+  PendingIntent openPI=PendingIntent.getActivity(this,1,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+  Notification.Builder b=new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle(s.title).setContentText(s.current).setContentIntent(openPI).setOnlyAlertOnce(true).setOngoing(s.running).setVisibility(Notification.VISIBILITY_PUBLIC);
+  if(s.running){
+   b.setProgress(Math.max(1,s.total),Math.min(s.total,s.done),s.total<=0);
+   Intent stop=new Intent(this,CompileService.class).setAction(ACTION_STOP);
+   PendingIntent stopPI=PendingIntent.getService(this,2,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+   b.addAction(new Notification.Action.Builder(android.R.drawable.ic_media_pause,"停止任务",stopPI).build());
+  }else{b.setProgress(0,0,false).setAutoCancel(true);}
+  return b.build();
+ }
+ @Override public IBinder onBind(Intent intent){return null;}
+ @Override public void onDestroy(){executor.shutdown();super.onDestroy();}
+}
