@@ -7,7 +7,7 @@ import org.json.*;
 import java.util.*;
 
 final class Store {
- static final String[] FILTERS={"speed-profile","speed","verify"};
+ static final String[] FILTERS={"speed-profile","speed","verify","everything"};
  private static final String PREF="dex2oat_state_v2";
  static SharedPreferences pref(Context c){return c.getApplicationContext().getSharedPreferences(PREF,0);}
  static String global(Context c){return pref(c).getString("global","speed-profile");}

@@ -10,7 +10,7 @@ final class ArtState {
   final String pkg; final String filter; final String detail; final boolean known; final boolean mixed;
   Entry(String p,String f,String d,boolean k,boolean m){pkg=p;filter=f;detail=d;known=k;mixed=m;}
  }
- private static final Pattern FILTER=Pattern.compile("(?i)(?:\\bfilter\\s*[=:]\\s*|\\b(?:compiler-filter|compiler filter)\\s*[=:]?\\s*|\\[status=\\s*)(speed-profile|speed|verify|quicken|extract|assume-verified|run-from-apk(?:-fallback)?)\\b");
+ private static final Pattern FILTER=Pattern.compile("(?i)(?:\\bfilter\\s*[=:]\\s*|\\b(?:compiler-filter|compiler filter)\\s*[=:]?\\s*|\\[status=\\s*)(speed-profile|speed|verify|everything|quicken|extract|assume-verified|run-from-apk(?:-fallback)?)\\b");
  static Entry query(String pkg){
   Engine.Result r=Engine.root("cmd package art dump "+Engine.shellQuote(pkg),20000);
   if(r.code!=0 || r.out.trim().isEmpty())r=Engine.root("pm art dump "+Engine.shellQuote(pkg),20000);

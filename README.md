@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.3.0
+# Dex2OAT Manager v1.6.2
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -15,7 +15,7 @@ Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的�
 
 ## 操作注意
 
-- Android 16 `speed`, `speed-profile`, `verify` 为默认提供的三种编译策略。未添加 `everything`。
+- Android 16 AOSP 标准 ART Service 支持 `speed`, `speed-profile`, `verify` 三种模式。本版新增 `everything` 作为**实验性兼容选项**，系统可能拒绝，不保证可用。失败会如实记录，绝不自动替换为 speed。
 - `pm compile --reset` 将优化产物重置至安装时状态，**不会**清空应用数据，但仍有系统稳定性风险。优先测试普通应用。
 - ART 状态是按包解析多 dex 的输出，如果返回多种编译状态会显示为“混合”，不会误认为已达标；无法解析显示“未知”。
 - 定时任务使用 WorkManager，受 Android / ColorOS 后台限制。
@@ -49,3 +49,20 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 注意：首次启动或手动「刷新全局 ART」仍会完整扫描。后台 WorkManager 的增量判定独立于前台 ART 状态缓存。
 
 构建验证：当前交付环境未安装 Android SDK，尚未真实运行 Gradle assembleDebug；项目 ZIP 和静态代码检查不等同于 Android 编译通过。
+
+
+## v1.6.1 变更
+- 编译/重置/ART 查询统一互斥；浏览页面、分类切换、勾选及分组配置不被任务锁阻止。
+- 手动 ART 全量查询、分组查询和编译操作增加确认；自动后台任务不弹框。
+- 用户/系统应用独立勾选与计数，顶部 Root 状态；取消扫描锁页。
+- 应用、分组、历史记录采用 RecyclerView；嵌套滚动区域拦截触摸，列表紧凑布局。
+- 开始任务时固化执行包名快照；后台 WorkManager 仍共用 Engine 互斥。
+
+注意：源码包仅经过静态检查，当前容器无 Android SDK/Gradle，尚未完成 assembleDebug。
+
+## v1.6.2
+
+- 全局模式和自定义分组新增 everything（实验性）选项，保留原三种。
+- ART 状态解析增加 everything 标记兼容。
+- 实际编译仍通过 `cmd package compile -m everything -f <package>`，设备不支持时显示失败，不自动降级。
+- 强烈建议先以单个普通应用测试，再考虑全局或自动任务；不建议默认设为 everything。

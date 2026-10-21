@@ -57,7 +57,7 @@ final class Engine {
     Result r=root(reset?"cmd package compile --reset "+shellQuote(pkg):"cmd package compile -m "+filter+" -f "+shellQuote(pkg),240000);
     boolean success=!STOP && compileSuccess(r);if(success){ok++;try{if(reset)marks.remove(pkg);else marks.put(pkg,key);Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
     JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
-    if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+r.out.trim());
+    if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+("everything".equals(filter)&&!success?"设备可能不支持 everything；请改用 speed。":"")+r.out.trim());
    }
    JSONObject record=new JSONObject();record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",incremental && System.currentTimeMillis()-started>420000L);record.put("details",details);Store.record(context,record);
    if(listener!=null)listener.update("任务结束：成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
