@@ -26,3 +26,15 @@ Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的�
 GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，Android SDK 36。项目未携带 Gradle Wrapper，CI 使用 setup-gradle。
 
 > 此环境不存在完整 Android SDK / Gradle，未运行 `assembleDebug`，所以 **不保证本版本已编译成功**。使用 GitHub Actions 验证后以真实构建结果为准。
+
+
+## v1.4.0 UI 和分组操作
+
+- 概览：独立任务状态卡片、停止按钮、双列快捷操作与达标统计。
+- 应用：用户/系统应用双 Tab、紧凑分层卡片、双列批量操作，移除全局“包含系统应用”开关。
+- 策略：全局模式与定时周期均为单行选择+保存；分组标题右侧新增按钮。
+- 分组：固定 380dp 高滚动区，分组卡片展示数量/确认不匹配数/未知数，四个并排按钮：刷新、编译、编辑、删除。
+- 分组编译：刷新后仅处理 ART 状态**已确认不匹配**的包，状态未知不会强制编译；最后仍由引擎执行增量校验。
+- 点击反馈：按钮使用 Ripple 和短时缩放动画，耗时操作附 Toast；任务是否运行在概览显示。
+
+注意：本交付是 Android Studio 源码工程；当前生成环境没有 Android SDK，未能运行 assembleDebug。建议在 GitHub Actions 编译并以构建日志确认。
