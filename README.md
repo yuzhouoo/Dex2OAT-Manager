@@ -45,3 +45,8 @@
 - 记录页展示执行历史、运行日志和停止任务。
 - 使用统一背景色、卡片间距和主次按钮层级；底层 ART/Root 逻辑不变。
 - 注意：源码未在目标手机或 CI 中完成实编译验证。
+
+
+### v1.2.1 编译修复
+- 修复 MainActivity 使用不存在的 Button.setTextAllCaps(false) 导致的 javac 编译失败；改为继承自 TextView 的 setTransformationMethod(null)，保持按钮文字大小写。
+- 其余 UI 和功能未调整。
