@@ -30,10 +30,12 @@ final class Store {
   for(int j=0;j<pk.length();j++)if(pkg.equals(pk.optString(j)))return g.optString("mode",global(c));
  }return global(c);}
  static String fingerprint(PackageInfo p){return p.getLongVersionCode()+":"+p.lastUpdateTime;}
- static List<PackageInfo> installed(Context c){List<PackageInfo> list=new ArrayList<>();
+ static List<PackageInfo> installed(Context c){return installed(c,includeSystem(c));}
+ static List<PackageInfo> installedAll(Context c){return installed(c,true);}
+ static List<PackageInfo> installed(Context c,boolean withSystem){List<PackageInfo> list=new ArrayList<>();
   for(PackageInfo p:c.getPackageManager().getInstalledPackages(0)){
    if(p.applicationInfo==null || p.packageName.equals(c.getPackageName()))continue;
-   if(!includeSystem(c) && ((p.applicationInfo.flags & (ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0))continue;
+   if(!withSystem && ((p.applicationInfo.flags & (ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0))continue;
    list.add(p);
   }
   Collections.sort(list,(a,b)->a.packageName.compareToIgnoreCase(b.packageName));return list;

@@ -47,7 +47,7 @@ jobs:
           gradle-version: '8.13'
 
       - name: Assemble debug APK
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        run: gradle :app:assembleDebug --no-daemon --console=plain --warning-mode=summary
 
       - name: Upload debug APK
         if: success()
