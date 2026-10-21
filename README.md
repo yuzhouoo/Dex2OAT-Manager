@@ -31,3 +31,7 @@
 
 ## 未完成验证
 当前环境未安装 Android SDK/Gradle，项目未通过实际 APK 构建或一加 12 真机测试。建议第一次只选一个普通应用运行，检查 KernelSU 授权、命令返回格式及任务记录。
+
+## GitHub Actions SDK 修复（2026-10-21）
+
+构建工作流已移除 `android-actions/setup-android@v3`，避免 `sdkmanager` 安装已失效的 `tools` 包时出现 `Warning: Failed to find package 'tools'`。直接通过 Runner 预装的 SDK command-line tools 安装 `platforms;android-36` 和 `build-tools;36.0.0`。GitHub Actions 仍需在真实 Runner 中验证。
