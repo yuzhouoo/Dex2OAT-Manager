@@ -13,6 +13,11 @@ final class Engine {
  private static final AtomicBoolean BUSY=new AtomicBoolean(false);
  private static volatile boolean STOP=false;
  private static volatile Process ACTIVE;
+ private static volatile boolean SCAN=false;
+ static synchronized boolean beginScan(){if(BUSY.get())return false;SCAN=true;BUSY.set(true);return true;}
+ static synchronized void endScan(){if(SCAN){SCAN=false;BUSY.set(false);}}
+ static synchronized boolean reserveTask(){if(BUSY.get())return false;BUSY.set(true);return true;}
+ static boolean scanning(){return SCAN;}
  static boolean busy(){return BUSY.get();}
  static void stop(){STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
  static class Result{final int code;final String out;Result(int c,String o){code=c;out=o;}}
@@ -29,10 +34,12 @@ final class Engine {
  static boolean rootOk(){Result r=root("id",12000);return r.code==0 && r.out.contains("uid=0");}
  static String shellQuote(String s){return "'"+s.replace("'","'\\''")+"'";}
  static boolean compileSuccess(Result r){String s=r.out.trim();return r.code==0 && (s.matches("(?s).*\\bSuccess\\b.*") || s.matches("(?s).*\\bSUCCESS\\b.*")) && !s.matches("(?s).*\\bFailure\\b.*");}
- static JSONObject run(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener);}
- static JSONObject reset(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener);}
- private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener){
-  if(!BUSY.compareAndSet(false,true))return null;
+ static JSONObject run(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,false);}
+ static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,true);}
+ static JSONObject reset(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,false);}
+ static JSONObject resetReserved(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,true);}
+ private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved){
+  if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;}}
   STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0;JSONArray details=new JSONArray();
   try{
    List<PackageInfo> installed=Store.installedAll(context);Map<String,PackageInfo> byPkg=new HashMap<>();for(PackageInfo p:installed)byPkg.put(p.packageName,p);
