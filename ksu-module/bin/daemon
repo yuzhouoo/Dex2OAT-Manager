@@ -3,13 +3,33 @@ ROOT=/data/adb/dex2oat-manager
 MOD=/data/adb/modules/dex2oat_backend
 mkdir -p "$ROOT/queue" "$ROOT/done"
 chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
-mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 0
-trap 'rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
+# Recover a stale lock without replacing an active older daemon.
+live_daemon() {
+ for F in /proc/[0-9]*/cmdline; do
+  P=${F#/proc/}; P=${P%/cmdline}
+  test "$P" = "$" && continue
+  test -r "$F" || continue
+  ARGS="$(tr '\000' ' ' < "$F" 2>/dev/null)"
+  case "$ARGS" in
+   *"/data/adb/modules/dex2oat_backend/bin/daemon"*) return 0;;
+  esac
+ done
+ return 1
+}
+if ! mkdir "$ROOT/daemon.lock" 2>/dev/null;then
+ if live_daemon;then exit 0;fi
+ rm -f "$ROOT/daemon.lock/pid"
+ rmdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
+ mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
+fi
+printf '%s\n' "$" > "$ROOT/daemon.lock/pid"
+trap 'rm -f "$ROOT/daemon.lock/pid";rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
+printf '%s\n' v2.0.0-beta4 > "$ROOT/runtime.version"
 log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }
 setstatus(){ printf '%s\n' "$*" > "$ROOT/status.tmp";mv "$ROOT/status.tmp" "$ROOT/status"; }
 # Recover interrupted active job after reboot, rechecking ART when incrementally resumed.
 if test -f "$ROOT/current.job"; then mv "$ROOT/current.job" "$ROOT/queue/recovered_$(date +%s).job";log "recovered interrupted job";fi
-setstatus idle
+setstatus "idle version=beta4"
 while :;do
   JOB=""
   for F in "$ROOT"/queue/*.job;do if test -f "$F";then JOB="$F";break;fi;done
@@ -20,7 +40,7 @@ while :;do
   MODE="$(sed -n '2p' "$ROOT/current.job")"
   ID="${JOB##*/}"; N=0; OK=0; FAIL=0; SKIP=0; MISMATCH=0
   TOTAL=$(( $(wc -l < "$ROOT/current.job") - 2 )); setstatus "running id=$ID done=0 total=$TOTAL ok=0 failed=0 skipped=0 unmatched=0"
-  log "start $ID $TYPE $MODE"
+  log "start $ID $TYPE $MODE engine=beta4"
   # Persist unprocessed entries after every app: interruption can resume.
   while test "$(wc -l < "$ROOT/current.job")" -gt 2;do
     if test -e "$ROOT/stop";then log "stopped $ID";break;fi
@@ -55,6 +75,7 @@ while :;do
     fi
     N=$((N+1))
     log "$ID $PKG $RESULT requested=$MODE before=$PRIMARY after=$AFTER_MODE command=$COMMAND"
+    log "$ID command_output=$(printf '%s' "$CMD_RESULT" | head -c 180)"
     setstatus "running id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH pkg=$PKG mode=$MODE"
     # Drop completed entry atomically; durable queue advances even if APK is closed.
     { sed -n '1,2p' "$ROOT/current.job"; sed -n '4,$p' "$ROOT/current.job"; } > "$ROOT/job.tmp"

@@ -11,7 +11,8 @@ final class BackendClient {
  private static final Pattern PACKAGE=Pattern.compile("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+");
  static boolean enabled(Context ctx){return Store.pref(ctx).getBoolean("backend_enabled",false);}
  static void enabled(Context ctx,boolean value){Store.pref(ctx).edit().putBoolean("backend_enabled",value).apply();}
- static boolean available(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" ping",0);return r.code==0 && r.out.contains("backend-v2");}
+ static boolean available(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" ping",0);return r.code==0 && r.out.contains("backend-v2") && r.out.contains("module=v2.0.0-beta4") && r.out.contains("runtime=v2.0.0-beta4");}
+ static String version(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" version",0);return r.code==0?r.out.trim():"offline";}
  static String status(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" status",0);return r.code==0?r.out.trim():"backend-offline";}
  static String logs(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" logs",0);return r.code==0?r.out:"";}
  static boolean stop(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" stop",0);return r.code==0&&r.out.contains("stop-requested");}

@@ -202,3 +202,9 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - APK Root 引擎强制编译后必须主 DEX ART 实际达标才计为成功，不再把命令 Success 当成达标；重置命令依旧独立计数。
 - KernelSU 后台增加主 DEX 编译前后实际状态对比，区分 success、failed 和 not_matched；状态中包含进度和不达标数量。
 - APK 概览每 5 秒刷新可选 KernelSU 后台状态；自动周期调度和完整数据库同步仍未迁移，保持旧功能回退。
+
+## v2.0.0-beta4
+- 修复 KernelSU 后台守护进程目录锁在异常退出、设备重启后残留时无法启动新版后台的问题。
+- 后台写入运行版本，control ping/version 报告模块版本与实际运行版本；APK 校验一致才启用后台模式。
+- 日志保留每次实际调用的模式、编译前后 ART、命令输出摘要，便于排查模式切换后 ART 不变化。
+- 不改变原有 compile -m 指令语义；ART 状态仍以主程序为准。

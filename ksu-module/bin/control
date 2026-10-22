@@ -7,7 +7,8 @@ chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
 valid_pkg() { case "$1" in ''|*[!a-zA-Z0-9_.]*) return 1;; esac; case "$1" in *.*) return 0;; *) return 1;; esac; }
 valid_mode() { case "$1" in speed|speed-profile|verify|everything) return 0;; *) return 1;; esac; }
 case "${1:-}" in
- ping) test -e "$MOD/bin/daemon" && echo "backend-v2";;
+ ping) test -e "$MOD/bin/daemon" && echo "backend-v2 module=$(sed -n 's/^version=//p' "$MOD/module.prop") runtime=$(cat "$ROOT/runtime.version" 2>/dev/null || echo offline)";;
+ version) echo "module=$(sed -n 's/^version=//p' "$MOD/module.prop") runtime=$(cat "$ROOT/runtime.version" 2>/dev/null || echo offline)";;
  status) if test -f "$ROOT/status"; then cat "$ROOT/status"; else echo "idle"; fi;;
  logs) if test -f "$ROOT/events.log"; then tail -n 100 "$ROOT/events.log"; fi;;
  stop) touch "$ROOT/stop"; echo "stop-requested";;
