@@ -16,17 +16,19 @@ final class Engine {
  private static volatile boolean SCAN=false;
  private static volatile boolean SCAN_STOP=false;
  private static volatile boolean RESERVED=false;
+ private static volatile boolean COMPILING=false;
  private static volatile long reservedAt=0L;
  private static final long START_TIMEOUT_MS=30000L;
  static synchronized boolean beginScan(){if(BUSY.get())return false;SCAN_STOP=false;SCAN=true;BUSY.set(true);return true;}
- static synchronized void endScan(){if(SCAN){SCAN=false;BUSY.set(false);}}
+ static synchronized void endScan(){if(SCAN){SCAN=false;SCAN_STOP=false;BUSY.set(false);}}
  static synchronized boolean reserveTask(){recoverPending();if(BUSY.get())return false;STOP=false;RESERVED=true;reservedAt=android.os.SystemClock.elapsedRealtime();BUSY.set(true);return true;}
  static synchronized boolean pending(){recoverPending();return RESERVED;}
- static synchronized boolean claimReserved(){recoverPending();if(!RESERVED||STOP||!BUSY.get())return false;RESERVED=false;return true;}
+ static synchronized boolean claimReserved(){recoverPending();if(!RESERVED||STOP||!BUSY.get())return false;RESERVED=false;COMPILING=true;return true;}
  static synchronized void recoverPending(){if(RESERVED&&android.os.SystemClock.elapsedRealtime()-reservedAt>START_TIMEOUT_MS){RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务启动超时，已释放任务锁");}}
- static synchronized void abandonClaim(){if(!SCAN){BUSY.set(false);STOP=false;TaskRuntime.abort("服务未能启动执行线程，已释放任务锁");}}
+ static synchronized void abandonClaim(){if(!SCAN&&COMPILING){COMPILING=false;BUSY.set(false);STOP=false;TaskRuntime.abort("服务未能启动执行线程，已释放任务锁");}}
  static synchronized boolean cancelPending(){if(!RESERVED)return false;RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务在准备阶段已取消");return true;}
  static boolean scanning(){return SCAN;}
+ static boolean compiling(){return COMPILING;}
  static boolean scanCancelled(){return SCAN_STOP;}
  static boolean busy(){return BUSY.get();}
  static synchronized void releaseReserved(){if(!SCAN&&RESERVED){RESERVED=false;BUSY.set(false);}}
@@ -96,6 +98,6 @@ final class Engine {
    if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}
-  finally{BUSY.set(false);ACTIVE=null;}
+  finally{synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
  }
 }

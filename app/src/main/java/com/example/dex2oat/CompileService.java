@@ -29,9 +29,9 @@ public final class CompileService extends Service {
   final boolean incremental=intent.getBooleanExtra(EXTRA_INCREMENTAL,false);
   final String scope=intent.getStringExtra(EXTRA_SCOPE)==null?"选中应用":intent.getStringExtra(EXTRA_SCOPE);
   if(pkgs==null){Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
-  TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());
   try{startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(RuntimeException ex){TaskRuntime.abort("前台服务启动失败："+ex.getClass().getSimpleName());Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
   if(!Engine.claimReserved()){TaskRuntime.abort("启动请求已取消或超时");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);return START_NOT_STICKY;}
+  TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());postProgress(true);
   try{executor.execute(()->{
    try{
     JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog,scope):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog,scope);
