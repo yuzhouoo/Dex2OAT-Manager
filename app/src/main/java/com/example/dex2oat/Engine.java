@@ -15,14 +15,22 @@ final class Engine {
  private static volatile Process ACTIVE;
  private static volatile boolean SCAN=false;
  private static volatile boolean SCAN_STOP=false;
+ private static volatile boolean RESERVED=false;
+ private static volatile long reservedAt=0L;
+ private static final long START_TIMEOUT_MS=30000L;
  static synchronized boolean beginScan(){if(BUSY.get())return false;SCAN_STOP=false;SCAN=true;BUSY.set(true);return true;}
  static synchronized void endScan(){if(SCAN){SCAN=false;BUSY.set(false);}}
- static synchronized boolean reserveTask(){if(BUSY.get())return false;BUSY.set(true);return true;}
+ static synchronized boolean reserveTask(){recoverPending();if(BUSY.get())return false;STOP=false;RESERVED=true;reservedAt=android.os.SystemClock.elapsedRealtime();BUSY.set(true);return true;}
+ static synchronized boolean pending(){recoverPending();return RESERVED;}
+ static synchronized boolean claimReserved(){recoverPending();if(!RESERVED||STOP||!BUSY.get())return false;RESERVED=false;return true;}
+ static synchronized void recoverPending(){if(RESERVED&&android.os.SystemClock.elapsedRealtime()-reservedAt>START_TIMEOUT_MS){RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务启动超时，已释放任务锁");}}
+ static synchronized void abandonClaim(){if(!SCAN){BUSY.set(false);STOP=false;TaskRuntime.abort("服务未能启动执行线程，已释放任务锁");}}
+ static synchronized boolean cancelPending(){if(!RESERVED)return false;RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务在准备阶段已取消");return true;}
  static boolean scanning(){return SCAN;}
  static boolean scanCancelled(){return SCAN_STOP;}
  static boolean busy(){return BUSY.get();}
- static synchronized void releaseReserved(){if(!SCAN)BUSY.set(false);}
- static void stop(){if(SCAN)SCAN_STOP=true;else STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
+ static synchronized void releaseReserved(){if(!SCAN&&RESERVED){RESERVED=false;BUSY.set(false);}}
+ static void stop(){if(cancelPending())return;if(SCAN)SCAN_STOP=true;else STOP=true;Process p=ACTIVE;if(p!=null)p.destroy();}
  static class Result{final int code;final String out;Result(int c,String o){code=c;out=o;}}
  static Result root(String command,long timeout){Process p=null;ByteArrayOutputStream data=new ByteArrayOutputStream();
   try{

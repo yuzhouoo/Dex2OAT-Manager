@@ -31,14 +31,15 @@ public final class CompileService extends Service {
   if(pkgs==null){Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
   TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());
   try{startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(RuntimeException ex){TaskRuntime.abort("前台服务启动失败："+ex.getClass().getSimpleName());Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
+  if(!Engine.claimReserved()){TaskRuntime.abort("启动请求已取消或超时");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);return START_NOT_STICKY;}
   try{executor.execute(()->{
    try{
     JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog,scope):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog,scope);
     String end=record==null?"任务异常":("已处理 "+record.optInt("processed")+"/"+record.optInt("requested")+" · 成功 "+record.optInt("success")+" · 失败 "+record.optInt("failed")+" · 跳过 "+record.optInt("skipped")+" · 未处理 "+record.optInt("pending"));
     TaskRuntime.finish(end);
    }catch(Throwable ex){TaskRuntime.finish("执行失败："+ex.getClass().getSimpleName());}
-   finally{Engine.releaseReserved();postProgress(true);stopForeground(STOP_FOREGROUND_DETACH);stopSelf(startId);}
-  });}catch(RuntimeException ex){TaskRuntime.abort("任务调度失败");Engine.releaseReserved();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);}
+   finally{postProgress(true);stopForeground(STOP_FOREGROUND_DETACH);stopSelf(startId);}
+  });}catch(RuntimeException ex){TaskRuntime.abort("任务调度失败");Engine.abandonClaim();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);}
   return START_NOT_STICKY;
  }
  private void onLog(String s){TaskRuntime.line(s);postProgress(false);}
