@@ -26,5 +26,43 @@ final class BackendClient {
   Engine.Result result=Engine.root(command.toString(),0);
   return result.code==0?result.out.trim():"submit-failed: "+result.out.trim();
  }
+
+ static java.util.Map<String,String> parseStatus(String status){
+  java.util.Map<String,String> map=new java.util.HashMap<>();
+  if(status==null)return map;
+  for(String token:status.split(" ")){int p=token.indexOf('=');if(p>0)map.put(token.substring(0,p),token.substring(p+1));}
+  return map;
+ }
+ static int number(java.util.Map<String,String> map,String key){try{return Math.max(0,Integer.parseInt(map.getOrDefault(key,"0")));}catch(Exception ex){return 0;}}
+ static synchronized void importHistory(Context ctx,String logs){
+  if(logs==null||logs.isEmpty())return;
+  // Import only completed task summaries, de-duplicated across app restarts.
+  for(String line:logs.split("\\r?\\n")){
+   int pos=line.indexOf(".job finished processed=");
+   if(pos<0)continue;
+   String[] head=line.substring(0,pos).split(" ");
+   if(head.length<3)continue;
+   String job=head[head.length-1]+".job";
+   String key="backend_history_"+job;
+   if(Store.pref(ctx).getBoolean(key,false))continue;
+   java.util.Map<String,String> fields=parseStatus(line.substring(pos+".job finished ".length()));
+   try{
+    org.json.JSONObject record=new org.json.JSONObject();
+    record.put("origin","KernelSU 后台");
+    record.put("scope","后台持久化任务");
+    record.put("source","KernelSU");
+    record.put("taskId",job);
+    record.put("requested",number(fields,"processed"));
+    record.put("processed",number(fields,"processed"));
+    record.put("success",number(fields,"ok"));
+    record.put("failed",number(fields,"failed")+number(fields,"unmatched"));
+    record.put("unmatched",number(fields,"unmatched"));
+    record.put("skipped",number(fields,"skipped"));
+    record.put("pending",0);
+    record.put("finishedAt",System.currentTimeMillis());
+    if(Store.pref(ctx).edit().putBoolean(key,true).commit())Store.record(ctx,record);
+   }catch(Exception ignored){}
+  }
+ }
  private BackendClient(){}
 }

@@ -42,7 +42,8 @@ public class MainActivity extends Activity {
  private Switch automatic,backendToggle;
  private volatile boolean backendStatusPending=false;private long lastBackendPoll=0L;
  private CheckBox autoUserApps,autoSystemApps;
- private TextView taskStatus;
+ private TextView taskStatus,backendProgressText,backendCurrentText,backendCountsText;
+ private ProgressBar backendProgress;
  private Button stopTaskButton,userAppTab,systemAppTab;
  private Spinner appStatusFilter;
  private EditText appPackageSearch;
@@ -58,13 +59,16 @@ public class MainActivity extends Activity {
  private long lastDatabaseRevision=-1;
  private final Runnable taskPulse=new Runnable(){public void run(){
   Engine.recoverPending();refreshLogs();
-  if(BackendClient.enabled(MainActivity.this)&&!backendStatusPending&&android.os.SystemClock.elapsedRealtime()-lastBackendPoll>5000){
+  if(BackendClient.enabled(MainActivity.this)&&!backendStatusPending&&android.os.SystemClock.elapsedRealtime()-lastBackendPoll>1400){
     backendStatusPending=true;lastBackendPoll=android.os.SystemClock.elapsedRealtime();
     pool.execute(()->{
       String status=BackendClient.status();
+      String log=BackendClient.logs();
+      BackendClient.importHistory(getApplicationContext(),log);
       ui.post(()->{
         backendStatusPending=false;
         if(backendState!=null)backendState.setText("KernelSU 后台："+status);
+        updateBackendProgress(status);
         if(backendToggle!=null&&BackendClient.enabled(MainActivity.this))backendToggle.setChecked(true);
       });
     });
@@ -151,7 +155,10 @@ public class MainActivity extends Activity {
    });});
   });
   pool.execute(()->{boolean available=BackendClient.available();ui.post(()->backendState.setText(available?"后台模块可连接 · "+(BackendClient.enabled(this)?"已启用":"未启用"):"未安装或未启动模块"));});
-  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(BackendClient.enabled(this)){pool.execute(()->{boolean ok=BackendClient.stop();ui.post(()->toast(ok?"已向后台发送停止请求":"后台未响应"));});}else if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
+  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);backendProgressText=text("后台进度 · 尚无任务",13);running.addView(backendProgressText);
+  backendProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);backendProgress.setMax(100);backendProgress.setProgressTintList(ColorStateList.valueOf(ACCENT));running.addView(backendProgress,new LinearLayout.LayoutParams(-1,dp(7)));
+  backendCurrentText=smallLabel("当前应用：—");running.addView(backendCurrentText);
+  backendCountsText=smallLabel("达标 0 · 未达标 0 · 失败 0 · 跳过 0");running.addView(backendCountsText);stopTaskButton=makeButton("停止当前任务",()->{if(BackendClient.enabled(this)){pool.execute(()->{boolean ok=BackendClient.stop();ui.post(()->toast(ok?"已向后台发送停止请求":"后台未响应"));});}else if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
   heading("快捷操作");LinearLayout quick=card(null);doubleButtons(quick,"编译全部应用",()->{if(blocked())return;styledDialog().setTitle("全量编译确认").setMessage("强制编译全部目标应用可能造成发热及存储占用，建议充电时执行。") .setNegativeButton("取消",null).setPositiveButton("开始",(d,w)->{nextScope="编译全部应用";start(false,null);}).show();},"刷新全局 ART",()->confirmArtScan());
   page=screens[1];LinearLayout manage=card(null);
   LinearLayout operationRow=new LinearLayout(this);operationRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -385,6 +392,16 @@ private void openArtModeApplications(boolean system,String mode){
  switchPage(1);showApps();
  toast((system?"系统应用":"用户应用")+" · "+mode+"（点击应用页分类可切换，模式筛选保留）");
 }
+ private void updateBackendProgress(String raw){
+  if(backendProgressText==null||!BackendClient.enabled(this))return;
+  java.util.Map<String,String> fields=BackendClient.parseStatus(raw);
+  String phase=raw.startsWith("running")?"正在编译":raw.startsWith("completed")?"编译完成":raw.startsWith("stopped")?"已暂停":raw.startsWith("idle")?"后台空闲":"后台离线";
+  int done=BackendClient.number(fields,"done"),total=BackendClient.number(fields,"total");
+  backendProgress.setProgress(total>0?Math.min(100,done*100/total):0);
+  backendProgressText.setText(phase+" · "+done+"/"+total+(total>0?" ("+(done*100/total)+"%)":""));
+  backendCurrentText.setText("当前应用："+fields.getOrDefault("pkg","—")+" · 模式："+fields.getOrDefault("mode","—"));
+  backendCountsText.setText("达标 "+fields.getOrDefault("ok","0")+" · 未达标 "+fields.getOrDefault("unmatched","0")+" · 失败 "+fields.getOrDefault("failed","0")+" · 跳过 "+fields.getOrDefault("skipped","0"));
+ }
  private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean pending=Engine.pending()&&!scanningNow;
  boolean compiling=Engine.compiling()&&!scanningNow;
  boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){boolean backendEnabled=BackendClient.enabled(this);stopTaskButton.setEnabled(backendEnabled||scanningNow||compiling||pending);stopTaskButton.setAlpha(backendEnabled||scanningNow||compiling||pending?1f:.45f);}}
