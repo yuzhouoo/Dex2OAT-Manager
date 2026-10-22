@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
  private volatile String phase="";
  private Spinner global,period;
  private Switch automatic;
+ private CheckBox autoUserApps,autoSystemApps;
  private TextView taskStatus;
  private Button stopTaskButton,userAppTab,systemAppTab;
  private boolean systemTab=false;
@@ -122,7 +123,20 @@ public class MainActivity extends Activity {
   appsList=createList(manage,440);
   page=screens[2];
   LinearLayout autoCard=card(null);automatic=new Switch(this);automatic.setText("开启自动周期扫描");automatic.setTextSize(14);automatic.setChecked(Store.auto(this));autoCard.addView(automatic);
-  LinearLayout periodLine=new LinearLayout(this);periodLine.setGravity(Gravity.CENTER_VERTICAL);autoCard.addView(periodLine,new LinearLayout.LayoutParams(-1,dp(48)));period=new Spinner(this);String[] intervals=new String[hours.length];for(int i=0;i<hours.length;i++)intervals[i]=hours[i]+" 小时";period.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,intervals));for(int i=0;i<hours.length;i++)if(hours[i]==Store.interval(this))period.setSelection(i);periodLine.addView(period,new LinearLayout.LayoutParams(0,dp(48),1));Button savePeriod=makeButton("保存",()->{Store.auto(this,automatic.isChecked());Store.interval(this,hours[period.getSelectedItemPosition()]);IncrementalWorker.schedule(this);toast("增量编译设置已保存");},true);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(88),dp(42));ap.setMargins(dp(10),0,0,0);periodLine.addView(savePeriod,ap);autoCard.addView(smallLabel("自动检测新增、更新与模式变化；调度时间可能延迟。"));
+  LinearLayout periodLine=new LinearLayout(this);periodLine.setGravity(Gravity.CENTER_VERTICAL);autoCard.addView(periodLine,new LinearLayout.LayoutParams(-1,dp(48)));period=new Spinner(this);String[] intervals=new String[hours.length];for(int i=0;i<hours.length;i++)intervals[i]=hours[i]+" 小时";period.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,intervals));for(int i=0;i<hours.length;i++)if(hours[i]==Store.interval(this))period.setSelection(i);periodLine.addView(period,new LinearLayout.LayoutParams(0,dp(48),1));Button savePeriod=makeButton("保存",()->{
+   boolean users=autoUserApps.isChecked(),systems=autoSystemApps.isChecked();
+   if(automatic.isChecked()&&!users&&!systems){toast("自动任务至少选择一种应用类型");return;}
+   Store.autoTargets(this,users,systems);
+   Store.auto(this,automatic.isChecked());Store.interval(this,hours[period.getSelectedItemPosition()]);
+   IncrementalWorker.schedule(this);toast("自动增量编译设置已保存");
+  },true);LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(dp(88),dp(42));ap.setMargins(dp(10),0,0,0);periodLine.addView(savePeriod,ap);
+  LinearLayout types=new LinearLayout(this);types.setOrientation(LinearLayout.HORIZONTAL);
+  autoUserApps=new CheckBox(this);autoUserApps.setText("用户应用");autoUserApps.setTextSize(13);autoUserApps.setChecked(Store.autoUsers(this));
+  autoSystemApps=new CheckBox(this);autoSystemApps.setText("系统应用");autoSystemApps.setTextSize(13);autoSystemApps.setChecked(Store.autoSystems(this));
+  types.addView(autoUserApps,new LinearLayout.LayoutParams(0,dp(46),1));
+  types.addView(autoSystemApps,new LinearLayout.LayoutParams(0,dp(46),1));
+  autoCard.addView(types);
+  autoCard.addView(smallLabel("只检查勾选的应用类型；未变化且已达标的应用直接跳过。"));
   LinearLayout groupHeading=new LinearLayout(this);groupHeading.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);page.addView(groupHeading,new LinearLayout.LayoutParams(-1,dp(54)));Button addGroup=makeButton("＋ 新建编译分组",()->editGroup(-1),true);LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(dp(150),dp(40));groupHeading.addView(addGroup,addLp);
   TextView sub=smallLabel("分组策略优先于全局模式，每个应用只能加入一个分组。");page.addView(sub);
   LinearLayout groupHost=card(null);groupsList=createList(groupHost,200);

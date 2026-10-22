@@ -48,7 +48,16 @@ final class Engine {
  static String shellQuote(String s){return "'"+s.replace("'","'\\''")+"'";}
  static boolean compileSuccess(Result r){String s=r.out.trim();return r.code==0 && (s.matches("(?s).*\\bSuccess\\b.*") || s.matches("(?s).*\\bSUCCESS\\b.*")) && !s.matches("(?s).*\\bFailure\\b.*");}
  static JSONObject run(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,false,0L);}
- static JSONObject runScheduled(Context context,Listener listener){return execute(context,true,null,false,listener,false,420000L,"自动执行","周期增量编译");}
+ static JSONObject runScheduled(Context context,Listener listener){
+  List<String> chosen=new ArrayList<>();
+  boolean users=Store.autoUsers(context),systems=Store.autoSystems(context);
+  for(PackageInfo p:Store.installedAll(context)){
+   int flags=p.applicationInfo==null?0:p.applicationInfo.flags;
+   boolean system=(flags&(android.content.pm.ApplicationInfo.FLAG_SYSTEM|android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;
+   if((system&&systems)||(!system&&users))chosen.add(p.packageName);
+  }
+  return execute(context,true,chosen,false,listener,false,420000L,"自动执行","周期增量编译（"+(users?"用户应用 ":"")+(systems?"系统应用":"")+"）");
+ }
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,true,0L);}
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener,String scope){return execute(context,incremental,targets,false,listener,true,0L,"手动执行",scope);}
  static JSONObject reset(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,false,0L);}
@@ -73,10 +82,20 @@ final class Engine {
     if(!reserved)TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
     ArtDatabase db=ArtDatabase.get(context);
-    ArtState.Entry before=incremental?ArtState.query(pkg):db.getState(pkg,Store.fingerprint(p));
+    ArtState.Entry cached=db.getState(pkg,Store.fingerprint(p));
+    boolean scheduled=maxDurationMs>0;
+    boolean unchanged=key.equals(marks.optString(pkg));
+    ArtState.Entry before;
+    if(incremental&&scheduled&&unchanged&&ArtState.matches(cached,filter)){
+     skipped++;processed++;TaskRuntime.skipped();
+     addDetail(details,pkg,filter,"skipped",-1,"版本、目标模式及上次 ART 验证结果未变化；增量无需再次查询");
+     if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 增量跳过："+pkg+" · 无变化");
+     continue;
+    }
+    before=incremental?ArtState.query(pkg):cached;
     if(before!=null&&incremental)db.update(context,pkg,before,"incremental-precheck",String.valueOf(started));
     if(incremental){ArtState.Entry st=before;if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 已达标跳过："+pkg+" · "+filter);continue;}
-     if(maxDurationMs>0 && key.equals(marks.optString(pkg)) && "speed-profile".equals(filter) && "verify".equals(st.filter)){
+     if(maxDurationMs>0 && unchanged && "speed-profile".equals(filter) && st!=null && "verify".equals(st.filter)){
       long last=Store.pref(context).getLong("profile_attempt_"+pkg,0L);
       if(System.currentTimeMillis()-last<86400000L){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"deferred",-1,"Profile 尚未生成或未生效，24 小时后允许再次尝试");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 待重试："+pkg+"（缺少 Profile；非已达标）");continue;}
      }
@@ -96,8 +115,9 @@ final class Engine {
    }
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
    int pending=pkgs.size()-processed;
-   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("verification","per-package");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
-   if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
+   int attempted=ok+failed;
+   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("verification","per-package");record.put("attempted",attempted);record.put("checked",processed);record.put("usersEnabled",Store.autoUsers(context));record.put("systemsEnabled",Store.autoSystems(context));record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
+   if(listener!=null)listener.update("任务结束：目标 "+(pkgs.size()+missing)+"，已检查 "+processed+"，实际编译 "+attempted+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}
   finally{if(!reserved)TaskRuntime.finish("自动任务结束；请查看执行记录");synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
