@@ -24,11 +24,21 @@ case "${1:-}" in
  health)
   MODULE="$(sed -n 's/^version=//p' "$MOD/module.prop")"
   RUNTIME="$(cat "$ROOT/runtime.version" 2>/dev/null || echo offline)"
-  if test "$MODULE" = "$RUNTIME" && test -f "$ROOT/daemon.lock/pid";then
-   PID="$(cat "$ROOT/daemon.lock/pid")"
-   case "$PID" in ''|*[!0-9]*) echo offline;exit 1;;esac
-   if kill -0 "$PID" 2>/dev/null;then echo "online version=$RUNTIME pid=$PID";else echo offline;exit 1;fi
-  else echo "offline module=$MODULE runtime=$RUNTIME";exit 1;fi
+  test "$MODULE" = "$RUNTIME" || { echo "offline version module=$MODULE runtime=$RUNTIME";exit 1; }
+  PID="$(cat "$ROOT/daemon.lock/pid" 2>/dev/null)"
+  case "$PID" in ''|*[!0-9]*) echo "offline invalid-pid";exit 1;; esac
+  test "$PID" -gt 1 || { echo "offline invalid-pid";exit 1; }
+  test -r "/proc/$PID/cmdline" || { echo "offline pid-missing=$PID";exit 1; }
+  ARGS="$(tr '\000' ' ' < "/proc/$PID/cmdline" 2>/dev/null)"
+  case "$ARGS" in
+   *"/dex2oat_backend/bin/daemon"*) echo "online version=$RUNTIME pid=$PID";;
+   *) echo "offline pid-mismatch=$PID";exit 1;;
+  esac
+  ;;
+ diagnostics)
+  "$MOD/bin/control" version
+  "$MOD/bin/control" health
+  tail -n 20 "$ROOT/startup.log" 2>/dev/null
   ;;
  start)
   shift

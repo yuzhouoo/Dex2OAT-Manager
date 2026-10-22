@@ -3,26 +3,23 @@ ROOT=/data/adb/dex2oat-manager
 MOD=/data/adb/modules/dex2oat_backend
 mkdir -p "$ROOT/queue" "$ROOT/done" "$ROOT/paused"
 chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
-# Recover a stale lock without replacing an active older daemon.
-live_daemon() {
- for F in /proc/[0-9]*/cmdline; do
-  P=${F#/proc/}; P=${P%/cmdline}
-  test -r "$F" || continue
-  ARGS="$(tr '\000' ' ' < "$F" 2>/dev/null)"
-  case "$ARGS" in
-   *"/data/adb/modules/dex2oat_backend/bin/daemon"*) return 0;;
-  esac
- done
- return 1
-}
-if ! mkdir "$ROOT/daemon.lock" 2>/dev/null;then
- if live_daemon;then exit 0;fi
- rm -f "$ROOT/daemon.lock/pid"
- rmdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
- mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
+# Only the daemon owns its PID and lock. An existing live PID prevents duplicates.
+LOCK="$ROOT/daemon.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+ OLD="$(cat "$LOCK/pid" 2>/dev/null)"
+ case "$OLD" in ''|*[!0-9]*) OLD=0;; esac
+ if test "$OLD" -gt 1 && test -r "/proc/$OLD/cmdline";then
+  OLD_ARGS="$(tr '\000' ' ' < "/proc/$OLD/cmdline" 2>/dev/null)"
+  case "$OLD_ARGS" in *"/dex2oat_backend/bin/daemon"*) exit 0;; esac
+ fi
+ rm -f "$LOCK/pid"
+ rmdir "$LOCK" 2>/dev/null || { echo "lock-recovery-failed" >> "$ROOT/startup.log";exit 1; }
+ mkdir "$LOCK" 2>/dev/null || exit 1
 fi
-trap 'rm -f "$ROOT/daemon.lock/pid";rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
-printf '%s\n' v2.0.0-beta6.1 > "$ROOT/runtime.version"
+printf '%s\n' "$$" > "$LOCK/pid"
+trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null' EXIT
+printf '%s\n' v2.0.0-beta6.3 > "$ROOT/runtime.version"
+printf '%s daemon-start pid=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$$" >> "$ROOT/startup.log"
 log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }
 setstatus(){ printf '%s\n' "$*" > "$ROOT/status.tmp";mv "$ROOT/status.tmp" "$ROOT/status"; }
 # Recover interrupted active job after reboot, rechecking ART when incrementally resumed.
