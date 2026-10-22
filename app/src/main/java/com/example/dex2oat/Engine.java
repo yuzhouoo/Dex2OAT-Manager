@@ -38,8 +38,7 @@ final class Engine {
   try{
    p=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();ACTIVE=p;final Process proc=p;
    Thread reader=new Thread(()->{try(InputStream in=proc.getInputStream()){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){synchronized(data){if(data.size()<32768)data.write(b,0,Math.min(n,32768-data.size()));}}}catch(Exception ignored){}});
-   reader.setDaemon(true);reader.start();boolean ended=p.waitFor(timeout,TimeUnit.MILLISECONDS);
-   if(!ended){p.destroyForcibly();reader.join(1500);return new Result(-1,"编译超时");}
+   reader.setDaemon(true);reader.start();p.waitFor();
    reader.join(1500);return new Result(p.exitValue(),data.toString("UTF-8"));
   }catch(Exception ex){if(p!=null)p.destroyForcibly();return new Result(-1,ex.toString());}
   finally{if(ACTIVE==p)ACTIVE=null;}
@@ -56,7 +55,7 @@ final class Engine {
    boolean system=(flags&(android.content.pm.ApplicationInfo.FLAG_SYSTEM|android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;
    if((system&&systems)||(!system&&users))chosen.add(p.packageName);
   }
-  return execute(context,true,chosen,false,listener,false,420000L,"自动执行","周期增量编译（"+(users?"用户应用 ":"")+(systems?"系统应用":"")+"）");
+  return execute(context,true,chosen,false,listener,false,0L,"自动执行","周期增量编译（"+(users?"用户应用 ":"")+(systems?"系统应用":"")+"）");
  }
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,true,0L);}
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener,String scope){return execute(context,incremental,targets,false,listener,true,0L,"手动执行",scope);}
@@ -77,7 +76,7 @@ final class Engine {
    if(!reserved){TaskRuntime.begin(origin+" · "+scope,pkgs.size());if(listener!=null)listener.update("目标清单已就绪：共 "+pkgs.size()+" 个应用");}
    JSONObject marks=Store.marks(context);
    for(int i=0;i<pkgs.size();i++){
-    if(STOP || (maxDurationMs>0&&System.currentTimeMillis()-started>=maxDurationMs)){timedOut=!STOP;break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
+    if(STOP){break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
     String key=Store.fingerprint(p)+"|"+filter;
     if(!reserved)TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
@@ -95,7 +94,7 @@ final class Engine {
     before=incremental?ArtState.query(pkg):cached;
     if(before!=null&&incremental)db.update(context,pkg,before,"incremental-precheck",String.valueOf(started));
     if(incremental){ArtState.Entry st=before;if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 已达标跳过："+pkg+" · "+filter);continue;}
-     if(maxDurationMs>0 && unchanged && "speed-profile".equals(filter) && st!=null && "verify".equals(st.filter)){
+     if("自动执行".equals(origin) && unchanged && "speed-profile".equals(filter) && st!=null && "verify".equals(st.filter)){
       long last=Store.pref(context).getLong("profile_attempt_"+pkg,0L);
       if(System.currentTimeMillis()-last<86400000L){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"deferred",-1,"Profile 尚未生成或未生效，24 小时后允许再次尝试");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 待重试："+pkg+"（缺少 Profile；非已达标）");continue;}
      }

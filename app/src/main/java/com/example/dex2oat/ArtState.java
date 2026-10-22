@@ -12,7 +12,7 @@ final class ArtState {
  }
  private static final Pattern FILTER=Pattern.compile("(?i)(?:\\bfilter\\s*[=:]\\s*|\\b(?:compiler-filter|compiler filter)\\s*[=:]?\\s*|\\[status=\\s*)(speed-profile|speed|verify|everything|quicken|extract|assume-verified|run-from-apk(?:-fallback)?)\\b");
  static Entry query(String pkg){
-  Engine.Result r=Engine.root("cmd package art dump "+Engine.shellQuote(pkg),20000);
+  Engine.Result r=Engine.root("cmd package art dump "+Engine.shellQuote(pkg),0);
   if(r.code!=0 || r.out.trim().isEmpty())r=Engine.root("pm art dump "+Engine.shellQuote(pkg),20000);
   if(r.code!=0)return new Entry(pkg,"未知","ART 查询失败："+r.out,false,false);
   Matcher m=FILTER.matcher(r.out);LinkedHashSet<String> found=new LinkedHashSet<>();while(m.find())found.add(m.group(1).toLowerCase(Locale.ROOT));

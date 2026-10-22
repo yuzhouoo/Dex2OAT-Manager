@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
    public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){if(appStateSelection!=position){appStateSelection=position;userScroll=0;systemScroll=0;showApps();}}
   });
   appPackageSearch=new EditText(this);appPackageSearch.setSingleLine(true);appPackageSearch.setTextSize(13);
-  appPackageSearch.setHint("按包名搜索当前分类及状态");appPackageSearch.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+  appPackageSearch.setHint("搜索应用名称或包名（当前分类及状态）");appPackageSearch.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
   manage.addView(appPackageSearch,new LinearLayout.LayoutParams(-1,dp(48)));
   appPackageSearch.addTextChangedListener(new android.text.TextWatcher(){
    public void beforeTextChanged(CharSequence s,int start,int count,int after){}
@@ -200,7 +200,11 @@ public class MainActivity extends Activity {
   boolean match=state!=null&&ArtState.matches(state,Store.chosenMode(this,p.packageName));
   if(appStateSelection==1&&!match)continue;
   if(appStateSelection==2&&(state==null||!state.known||match))continue;
-  if(!appSearchText.isEmpty()&&!p.packageName.toLowerCase(java.util.Locale.ROOT).contains(appSearchText))continue;
+  if(!appSearchText.isEmpty()){
+   String pkg=p.packageName.toLowerCase(java.util.Locale.ROOT);
+   String label=String.valueOf(getPackageManager().getApplicationLabel(p.applicationInfo)).toLowerCase(java.util.Locale.ROOT);
+   if(!pkg.contains(appSearchText)&&!label.contains(appSearchText))continue;
+  }
   list.add(p);
  }return list;}
  private RecyclerView createList(LinearLayout host,int height){RecyclerView v=new RecyclerView(this);v.setLayoutManager(new LinearLayoutManager(this));v.setNestedScrollingEnabled(true);v.setHasFixedSize(true);v.setVerticalScrollBarEnabled(true);v.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);v.setOnTouchListener((view,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)view.getParent().requestDisallowInterceptTouchEvent(true);if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);return false;});host.addView(v,new LinearLayout.LayoutParams(-1,dp(height)));return v;}

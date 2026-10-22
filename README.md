@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.15
+# Dex2OAT Manager v1.6.16
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -145,3 +145,7 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 增加刷新选中应用 ART 状态按钮，只扫描选中包名，不触发编译。
 - 修复每次 Activity onCreate() 重新调度造成周期被取消重建的问题：配置未变则 KEEP。
 - 自动任务记录上次启动时间，执行时校验最短周期；失败或占用不走 WorkManager 的提前重试。
+
+## v1.6.16
+- 移除应用层批量任务时限及 Root 编译/ART 查询命令超时，支持持续执行至完成或主动停止。
+- 应用页搜索同时匹配应用名称和包名，并遵守用户/系统与达标状态筛选条件。
