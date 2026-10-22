@@ -7,7 +7,6 @@ chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
 live_daemon() {
  for F in /proc/[0-9]*/cmdline; do
   P=${F#/proc/}; P=${P%/cmdline}
-  test "$P" = "$" && continue
   test -r "$F" || continue
   ARGS="$(tr '\000' ' ' < "$F" 2>/dev/null)"
   case "$ARGS" in
@@ -22,7 +21,6 @@ if ! mkdir "$ROOT/daemon.lock" 2>/dev/null;then
  rmdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
  mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
 fi
-printf '%s\n' "$" > "$ROOT/daemon.lock/pid"
 trap 'rm -f "$ROOT/daemon.lock/pid";rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
 printf '%s\n' v2.0.0-beta6 > "$ROOT/runtime.version"
 log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }

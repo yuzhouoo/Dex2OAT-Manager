@@ -1,6 +1,6 @@
 id=dex2oat_backend
 name=Dex2OAT Backend
-version=v2.0.0-beta6
-versionCode=206
+version=v2.0.0-beta6.1
+versionCode=207
 author=Dex2OAT Manager
 description=Root daemon with persistent task queue and ART verification. Requires Dex2OAT Manager v2.0.
