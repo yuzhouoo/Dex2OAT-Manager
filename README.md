@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.17
+# Dex2OAT Manager v1.6.18
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -154,3 +154,8 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - ART 解析独立识别主 DEX（base / split）与 known secondary dex files；主 DEX 状态决定达标、筛选、统计及增量跳过。
 - 编译主程序后，如检测到有效次级 DEX，尝试使用受支持的 --secondary-dex 编译，并独立记录其命令结果。
 - SQLite 升级为 v2 保存次级 DEX 摘要；旧版混合状态作未知处理，升级时触发全量 ART 重新读取。
+
+## v1.6.18
+- 自定义编译分组对全部组成员增量检查，包括未知状态；使用分组指定的编译模式，已达标应用跳过。
+- 应用页编译选中应用可在二次确认框选择本次模式，默认全局模式；本次模式独立传递给 CompileService/Engine，不修改永久设置。
+- 应用页状态筛选与应用搜索框同一行；刷新选中 ART 与重置选中并排。

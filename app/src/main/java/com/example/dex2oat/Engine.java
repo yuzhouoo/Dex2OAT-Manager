@@ -59,6 +59,9 @@ final class Engine {
  }
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,true,0L);}
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener,String scope){return execute(context,incremental,targets,false,listener,true,0L,"手动执行",scope);}
+ static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener,String scope,String overrideMode){
+  return execute(context,incremental,targets,false,listener,true,0L,"手动执行",scope,overrideMode);
+ }
  static JSONObject reset(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,false,0L);}
  static JSONObject resetReserved(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,true,0L);}
  static JSONObject resetReserved(Context context,List<String> targets,Listener listener,String scope){return execute(context,false,targets,true,listener,true,0L,"手动执行",scope);}
@@ -67,6 +70,9 @@ final class Engine {
  }
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,"手动执行",reset?"重置":"编译应用");}
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope){
+ return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,origin,scope,null);
+ }
+ private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope,String overrideMode){
   if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;COMPILING=true;}}
   if(!reserved)STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
@@ -76,7 +82,7 @@ final class Engine {
    if(!reserved){TaskRuntime.begin(origin+" · "+scope,pkgs.size());if(listener!=null)listener.update("目标清单已就绪：共 "+pkgs.size()+" 个应用");}
    JSONObject marks=Store.marks(context);
    for(int i=0;i<pkgs.size();i++){
-    if(STOP){break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
+    if(STOP){break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=overrideMode!=null&&Store.validMode(overrideMode)?overrideMode:Store.chosenMode(context,pkg);
     String key=Store.fingerprint(p)+"|"+filter;
     if(!reserved)TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
@@ -121,7 +127,7 @@ final class Engine {
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
    int pending=pkgs.size()-processed;
    int attempted=ok+failed;
-   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("verification","per-package");record.put("attempted",attempted);record.put("checked",processed);record.put("usersEnabled",Store.autoUsers(context));record.put("systemsEnabled",Store.autoSystems(context));record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
+   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);if(overrideMode!=null)record.put("overrideMode",overrideMode);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("verification","per-package");record.put("attempted",attempted);record.put("checked",processed);record.put("usersEnabled",Store.autoUsers(context));record.put("systemsEnabled",Store.autoSystems(context));record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
    if(listener!=null)listener.update("任务结束：目标 "+(pkgs.size()+missing)+"，已检查 "+processed+"，实际编译 "+attempted+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}

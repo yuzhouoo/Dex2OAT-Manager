@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 public final class CompileService extends Service {
  static final String ACTION_RUN="com.example.dex2oat.RUN";
  static final String ACTION_STOP="com.example.dex2oat.STOP";
- static final String EXTRA_PACKAGES="packages", EXTRA_RESET="reset", EXTRA_INCREMENTAL="incremental", EXTRA_SCOPE="scope";
+ static final String EXTRA_PACKAGES="packages", EXTRA_RESET="reset", EXTRA_INCREMENTAL="incremental", EXTRA_SCOPE="scope",EXTRA_MODE="override_mode";
  private static final int ID=4106;
  private static final String CHANNEL="dex2oat_task";
  private final ExecutorService executor=Executors.newSingleThreadExecutor();
@@ -28,13 +28,14 @@ public final class CompileService extends Service {
   final boolean reset=intent.getBooleanExtra(EXTRA_RESET,false);
   final boolean incremental=intent.getBooleanExtra(EXTRA_INCREMENTAL,false);
   final String scope=intent.getStringExtra(EXTRA_SCOPE)==null?"选中应用":intent.getStringExtra(EXTRA_SCOPE);
+  final String overrideMode=intent.getStringExtra(EXTRA_MODE);
   if(pkgs==null){Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
   try{startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(RuntimeException ex){TaskRuntime.abort("前台服务启动失败："+ex.getClass().getSimpleName());Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
   if(!Engine.claimReserved()){TaskRuntime.abort("启动请求已取消或超时");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);return START_NOT_STICKY;}
   TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());postProgress(true);
   try{executor.execute(()->{
    try{
-    JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog,scope):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog,scope);
+    JSONObject record=reset?Engine.resetReserved(getApplicationContext(),pkgs,this::onLog,scope):Engine.runReserved(getApplicationContext(),incremental,pkgs,this::onLog,scope,overrideMode);
     String end=record==null?"任务异常":("已处理 "+record.optInt("processed")+"/"+record.optInt("requested")+" · 成功 "+record.optInt("success")+" · 失败 "+record.optInt("failed")+" · 跳过 "+record.optInt("skipped")+" · 未处理 "+record.optInt("pending"));
     TaskRuntime.finish(end);
    }catch(Throwable ex){TaskRuntime.finish("执行失败："+ex.getClass().getSimpleName());}
