@@ -82,7 +82,7 @@ final class Engine {
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
     ArtDatabase db=ArtDatabase.get(context);
     ArtState.Entry cached=db.getState(pkg,Store.fingerprint(p));
-    boolean scheduled=maxDurationMs>0;
+    boolean scheduled="自动执行".equals(origin);
     boolean unchanged=key.equals(marks.optString(pkg));
     ArtState.Entry before;
     if(incremental&&scheduled&&unchanged&&ArtState.matches(cached,filter)){
@@ -103,13 +103,19 @@ final class Engine {
     if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] "+pkg+" · "+filter);
     Result r=root(reset?"cmd package compile --reset "+shellQuote(pkg):"cmd package compile -m "+filter+" -f "+shellQuote(pkg),240000);
     boolean success=!STOP && compileSuccess(r);
-    ArtState.Entry after=ArtState.query(pkg);
+    ArtState.Entry primaryAfter=ArtState.query(pkg);
+    Result secondaryResult=null;
+    if(!reset && !STOP && primaryAfter.secondaryKnown>0){
+      secondaryResult=root("cmd package compile -m "+filter+" -f --secondary-dex "+shellQuote(pkg),0);
+      if(listener!=null)listener.update("次级 DEX "+pkg+"："+(compileSuccess(secondaryResult)?"编译命令成功":"未完成或设备不支持")+"（不影响主程序判定）");
+    }
+    ArtState.Entry after=secondaryResult==null?primaryAfter:ArtState.query(pkg);
     db.update(context,pkg,after,reset?"reset-verification":"compile-verification",String.valueOf(started));
     boolean verified=ArtState.matches(after,filter);
     processed++;TaskRuntime.outcome(success);
     if(listener!=null)listener.update("ART 验证 "+pkg+"：当前 "+after.filter+"，目标 "+filter+"，"+(verified?"已达标":after.known?"未达标":"未知"));
     if(success){ok++;try{if(reset){marks.remove(pkg);}else{marks.put(pkg,key);if("speed-profile".equals(filter))Store.pref(context).edit().putLong("profile_attempt_"+pkg,System.currentTimeMillis()).apply();}Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
-    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":"failed");detail.put("beforeArt",before==null?"未知":before.filter);detail.put("afterArt",after.filter);detail.put("artMatch",verified);detail.put("artKnown",after.known);detail.put("verifiedAt",System.currentTimeMillis());detail.put("command","cmd package compile "+(reset?"--reset":"-m "+filter+" -f")+" "+pkg);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
+    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":"failed");detail.put("beforeArt",before==null?"未知":before.filter);detail.put("afterArt",after.filter);detail.put("artMatch",verified);detail.put("artKnown",after.known);detail.put("secondaryCount",after.secondaryCount);detail.put("secondarySummary",after.secondarySummary);detail.put("secondaryStatus",secondaryResult==null?"未执行":compileSuccess(secondaryResult)?"命令成功":"未完成或不支持");detail.put("verifiedAt",System.currentTimeMillis());detail.put("command","cmd package compile "+(reset?"--reset":"-m "+filter+" -f")+" "+pkg);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
     if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+("everything".equals(filter)&&!success?"设备可能不支持 everything；请改用 speed。":"")+r.out.trim());
    }
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
