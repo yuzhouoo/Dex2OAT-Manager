@@ -120,7 +120,7 @@ public class MainActivity extends Activity {
   manage.addView(operationRow,new LinearLayout.LayoutParams(-1,dp(46)));
   Button scanBtn=makeButton("扫描增量",()->confirmCompile(true,null),false);
   Button refreshBtn=makeButton("刷新状态",()->refreshSelectedApps(),false);
-  Button compileBtn=makeButton("编译应用",()->confirmSelectedMode(),true);
+  Button compileBtn=makeButton("编译应用",()->confirmSelectedMode(),false);
   Button resetBtn=makeButton("重置应用",()->confirmReset(new ArrayList<>(selected)),false);
   Button[] operations={scanBtn,refreshBtn,compileBtn,resetBtn};
   for(int j=0;j<operations.length;j++){operations[j].setTextSize(11);operations[j].setPadding(dp(1),0,dp(1),0);
@@ -337,7 +337,18 @@ public class MainActivity extends Activity {
   .setNegativeButton("取消",null).setPositiveButton("开始",(dialog,which)->startCompileWithMode(true,targets,"自定义分组："+group.optString("name"),mode)).show();
 }
  private void showGroups(){if(groupsList==null)return;JSONArray all=Store.groups(this);groupsList.setAdapter(adapter(all.length(),i->groupRow(all.optJSONObject(i),i)));}
- private View groupRow(JSONObject group,int ix){if(group==null)return smallLabel("无效分组");JSONArray pk=group.optJSONArray("packages");int count=pk==null?0:pk.length();int matched=0,unknown=0;for(int j=0;j<count;j++){String pkg=pk.optString(j);ArtState.Entry st=artStates.get(pkg);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,group.optString("mode")))matched++;}int mismatch=count-matched-unknown;LinearLayout tile=vertical();tile.setPadding(dp(10),dp(7),dp(10),dp(8));tile.setBackground(shape(0xffF9FAFF,BORDER,12));LinearLayout wrapper=vertical();LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.setMargins(0,dp(2),0,dp(5));wrapper.addView(tile,tp);TextView title=text(group.optString("name"),14);title.setTypeface(null,Typeface.BOLD);title.setPadding(0,0,0,0);tile.addView(title);TextView details=smallLabel(group.optString("mode")+" · "+count+" 个应用 · 不匹配 "+mismatch+" · 未知 "+unknown);details.setPadding(0,0,0,0);tile.addView(details);LinearLayout actions=new LinearLayout(this);LinearLayout.LayoutParams ar=new LinearLayout.LayoutParams(-1,dp(35));ar.setMargins(0,dp(5),0,0);tile.addView(actions,ar);String[] labels={"刷新","编译","编辑","删除"};Runnable[] callbacks={()->refreshGroup(group),()->compileGroup(group),()->editGroup(ix),()->styledDialog().setTitle("删除分组").setMessage("删除后该分组应用将恢复全局编译策略。") .setNegativeButton("取消",null).setPositiveButton("删除",(d,w)->{Store.deleteGroup(this,ix);reload();toast("分组已删除");}).show()};for(int j=0;j<4;j++){Button b=makeButton(labels[j],callbacks[j],j==1);b.setTextSize(11);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(35),1);if(j<3)bp.setMargins(0,0,dp(4),0);actions.addView(b,bp);}return wrapper;}
+ private View groupRow(JSONObject group,int ix){if(group==null)return smallLabel("无效分组");JSONArray pk=group.optJSONArray("packages");int count=pk==null?0:pk.length();int matched=0,unknown=0;for(int j=0;j<count;j++){String pkg=pk.optString(j);ArtState.Entry st=artStates.get(pkg);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,group.optString("mode")))matched++;}int mismatch=count-matched-unknown;LinearLayout tile=vertical();tile.setPadding(dp(10),dp(7),dp(10),dp(8));tile.setBackground(shape(0xffF9FAFF,BORDER,12));LinearLayout wrapper=vertical();LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.setMargins(0,dp(2),0,dp(5));wrapper.addView(tile,tp);TextView title=text(group.optString("name"),14);title.setTypeface(null,Typeface.BOLD);title.setPadding(0,0,0,0);tile.addView(title);TextView details=smallLabel(group.optString("mode")+" · "+count+" 个应用 · 不匹配 "+mismatch+" · 未知 "+unknown);details.setPadding(0,0,0,0);tile.addView(details);LinearLayout actions=new LinearLayout(this);LinearLayout.LayoutParams ar=new LinearLayout.LayoutParams(-1,dp(35));ar.setMargins(0,dp(5),0,0);tile.addView(actions,ar);String[] labels={"刷新","编译","编辑","删除"};Runnable[] callbacks={()->refreshGroup(group),()->compileGroup(group),()->editGroup(ix),()->styledDialog().setTitle("删除分组").setMessage("删除后该分组应用将恢复全局编译策略。") .setNegativeButton("取消",null).setPositiveButton("删除",(d,w)->{Store.deleteGroup(this,ix);reload();toast("分组已删除");}).show()};for(int j=0;j<4;j++){Button b=makeButton(labels[j],callbacks[j],false);b.setTextSize(11);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(35),1);if(j<3)bp.setMargins(0,0,dp(4),0);actions.addView(b,bp);}return wrapper;}
+ private void renderGroupChecks(LinearLayout rows,List<PackageInfo> visible,Set<String> picked){
+  for(int i=0;i<visible.size()&&i<rows.getChildCount();i++){
+   View row=rows.getChildAt(i);
+   if(row instanceof LinearLayout){
+    LinearLayout container=(LinearLayout)row;
+    if(container.getChildCount()>0&&container.getChildAt(0) instanceof CheckBox){
+     ((CheckBox)container.getChildAt(0)).setChecked(picked.contains(visible.get(i).packageName));
+    }
+   }
+  }
+ }
  private void editGroup(int ix){JSONObject old=ix<0?null:Store.groups(this).optJSONObject(ix);Set<String> picked=new HashSet<>();if(old!=null){JSONArray a=old.optJSONArray("packages");if(a!=null)for(int i=0;i<a.length();i++)picked.add(a.optString(i));}
   Set<String> unavailable=new HashSet<>();JSONArray gs=Store.groups(this);for(int i=0;i<gs.length();i++){if(i==ix)continue;JSONObject g=gs.optJSONObject(i);if(g==null)continue;JSONArray a=g.optJSONArray("packages");if(a!=null)for(int j=0;j<a.length();j++)unavailable.add(a.optString(j));}
   List<PackageInfo> all=Store.installedAll(this);LinearLayout body=vertical();body.setPadding(dp(18),dp(4),dp(18),dp(4));EditText name=new EditText(this);name.setSingleLine(true);name.setHint("分组名称");if(old!=null)name.setText(old.optString("name"));body.addView(name);Spinner choice=modeSpinner(old==null?"speed":old.optString("mode"));body.addView(choice);
@@ -345,9 +356,61 @@ public class MainActivity extends Activity {
   EditText searchGroup=new EditText(this);searchGroup.setSingleLine(true);searchGroup.setHint("搜索名称或包名");body.addView(searchGroup);TextView count=text("已选 "+picked.size()+" 个",13);body.addView(count);
   Button selectVisible=new Button(this);selectVisible.setText("全选当前筛选结果");body.addView(selectVisible);
   ScrollView scroll=new ScrollView(this);LinearLayout rows=vertical();scroll.addView(rows);body.addView(scroll,new LinearLayout.LayoutParams(-1,dp(330)));
-  Runnable render=()->{rows.removeAllViews();String q=searchGroup.getText().toString().toLowerCase(Locale.ROOT);boolean showSystem=system.isChecked();List<PackageInfo> visible=new ArrayList<>();for(PackageInfo p:all){if(p.applicationInfo==null)continue;boolean isSystem=(p.applicationInfo.flags&(ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;if(isSystem!=showSystem)continue;String label=String.valueOf(getPackageManager().getApplicationLabel(p.applicationInfo));if(!label.toLowerCase(Locale.ROOT).contains(q)&&!p.packageName.toLowerCase(Locale.ROOT).contains(q))continue;visible.add(p);CheckBox box=new CheckBox(this);box.setText(label+"\n"+p.packageName+(unavailable.contains(p.packageName)?"（已被其他分组占用）":""));box.setTextSize(12);box.setEnabled(!unavailable.contains(p.packageName));box.setChecked(picked.contains(p.packageName));box.setOnCheckedChangeListener((v,checked)->{if(checked)picked.add(p.packageName);else picked.remove(p.packageName);count.setText("已选 "+picked.size()+" 个");});rows.addView(box);}
-   selectVisible.setOnClickListener(v->{boolean allChecked=true;for(PackageInfo p:visible)if(!unavailable.contains(p.packageName)&&!picked.contains(p.packageName))allChecked=false;for(PackageInfo p:visible)if(!unavailable.contains(p.packageName)){if(allChecked)picked.remove(p.packageName);else picked.add(p.packageName);}count.setText("已选 "+picked.size()+" 个");for(int j=0;j<rows.getChildCount();j++){View item=rows.getChildAt(j);if(item instanceof CheckBox){CheckBox box=(CheckBox)item;PackageInfo info=visible.get(j);box.setChecked(picked.contains(info.packageName));}}});};
-  render.run();tabs.setOnCheckedChangeListener((g,id)->render.run());searchGroup.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int c,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){render.run();}public void afterTextChanged(android.text.Editable e){}});
+  Runnable render=()->{
+   rows.removeAllViews();String q=searchGroup.getText().toString().toLowerCase(Locale.ROOT);
+   boolean showSystem=system.isChecked();List<PackageInfo> visible=new ArrayList<>();
+   for(PackageInfo p:all){
+    if(p.applicationInfo==null)continue;
+    boolean isSystem=(p.applicationInfo.flags&(ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;
+    if(isSystem!=showSystem)continue;
+    String label=String.valueOf(getPackageManager().getApplicationLabel(p.applicationInfo));
+    if(!label.toLowerCase(Locale.ROOT).contains(q)&&!p.packageName.toLowerCase(Locale.ROOT).contains(q))continue;
+    visible.add(p);
+    boolean occupied=unavailable.contains(p.packageName);
+    LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(5),dp(5),dp(5),dp(5));row.setBackground(clickShape(Color.WHITE,BORDER,10));
+    LinearLayout.LayoutParams rowLp=new LinearLayout.LayoutParams(-1,-2);rowLp.setMargins(0,dp(2),0,dp(3));
+    rows.addView(row,rowLp);
+    CheckBox checkbox=new CheckBox(this);checkbox.setButtonTintList(ColorStateList.valueOf(ACCENT));
+    checkbox.setChecked(picked.contains(p.packageName));checkbox.setEnabled(!occupied);row.addView(checkbox);
+    ImageView icon=new ImageView(this);
+    try{icon.setImageDrawable(getPackageManager().getApplicationIcon(p.applicationInfo));}
+    catch(Exception ignored){icon.setImageResource(android.R.drawable.sym_def_app_icon);}
+    LinearLayout.LayoutParams iconLp=new LinearLayout.LayoutParams(dp(34),dp(34));iconLp.setMargins(0,0,dp(9),0);row.addView(icon,iconLp);
+    LinearLayout information=vertical();row.addView(information,new LinearLayout.LayoutParams(0,-2,1));
+    TextView appName=text(label,13);appName.setTypeface(null,Typeface.BOLD);appName.setSingleLine(true);
+    appName.setEllipsize(android.text.TextUtils.TruncateAt.END);appName.setPadding(0,0,0,0);information.addView(appName);
+    TextView packageName=smallLabel(p.packageName);packageName.setTextSize(10);
+    packageName.setSingleLine(true);packageName.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+    packageName.setPadding(0,0,0,0);information.addView(packageName);
+    ArtState.Entry state=artStates.get(p.packageName);
+    String current=state==null?"待扫描":state.filter;
+    String target=Store.FILTERS[choice.getSelectedItemPosition()];
+    TextView modes=smallLabel("ART "+current+" → "+target+(occupied?" · 已被其他分组占用":""));
+    modes.setTextSize(10);modes.setPadding(0,0,0,0);information.addView(modes);
+    boolean match=state!=null&&ArtState.matches(state,target);
+    TextView outcome=text(occupied?"不可选择":(state==null||!state.known)?"未知":match?"已达标":"未达标",10);
+    outcome.setTextColor(occupied?MUTED:match?0xff188269:0xffB16F28);
+    row.addView(outcome);
+    checkbox.setOnCheckedChangeListener((button,checked)->{
+     if(checked)picked.add(p.packageName);else picked.remove(p.packageName);
+     count.setText("已选 "+picked.size()+" 个");
+    });
+    row.setOnClickListener(v->{if(!occupied)checkbox.setChecked(!checkbox.isChecked());});
+   }
+   selectVisible.setOnClickListener(v->{
+    boolean allChecked=true;
+    for(PackageInfo p:visible)if(!unavailable.contains(p.packageName)&&!picked.contains(p.packageName))allChecked=false;
+    for(PackageInfo p:visible)if(!unavailable.contains(p.packageName)){
+     if(allChecked)picked.remove(p.packageName);else picked.add(p.packageName);
+    }
+    count.setText("已选 "+picked.size()+" 个");renderGroupChecks(rows,visible,picked);
+   });
+  };
+  render.run();choice.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+   public void onNothingSelected(android.widget.AdapterView<?> parent){}
+   public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){render.run();}
+  });tabs.setOnCheckedChangeListener((g,id)->render.run());searchGroup.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int c,int after){}public void onTextChanged(CharSequence s,int st,int before,int count){render.run();}public void afterTextChanged(android.text.Editable e){}});
   AlertDialog dlg=styledDialog().setTitle(ix<0?"新增分组":"编辑分组").setView(body).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dlg.setOnShowListener(d->dlg.getButton(-1).setOnClickListener(v->{try{String mode=Store.FILTERS[choice.getSelectedItemPosition()];Store.saveGroup(this,ix,name.getText().toString(),mode,picked);if("everything".equals(mode))toast("已保存实验性 everything 策略，执行可能失败");dlg.dismiss();reload();}catch(Exception e){toast(e.getMessage());}}));dlg.show();
  }
 
