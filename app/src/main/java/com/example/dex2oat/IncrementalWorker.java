@@ -9,9 +9,11 @@ public class IncrementalWorker extends Worker {
  public IncrementalWorker(@NonNull Context context,@NonNull WorkerParameters params){super(context,params);}
  @NonNull @Override public Result doWork(){
   if(!Store.auto(getApplicationContext()))return Result.success();
-  if(!Engine.rootOk())return Result.retry();
-  org.json.JSONObject record=Engine.runScheduled(getApplicationContext(),null);
-  if(record==null)return Result.retry();
+  TaskRuntime.line("自动周期任务触发：开始检查 Root");
+  if(!Engine.rootOk()){TaskRuntime.line("自动周期任务：Root 不可用，将由 WorkManager 重试");return Result.retry();}
+  org.json.JSONObject record=Engine.runScheduled(getApplicationContext(),TaskRuntime::line);
+  if(record==null){TaskRuntime.line("自动周期任务：未能开始或出现异常，将重试");return Result.retry();}
+  TaskRuntime.line("自动周期任务记录已保存：已处理 "+record.optInt("processed")+"/"+record.optInt("requested")+"，成功 "+record.optInt("success")+"，失败 "+record.optInt("failed")+"，跳过 "+record.optInt("skipped")+"，未处理 "+record.optInt("pending"));
   return Result.success();
  }
  static void schedule(Context ctx){WorkManager wm=WorkManager.getInstance(ctx);

@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.12
+# Dex2OAT Manager v1.6.13
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -128,3 +128,8 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 前台服务正式认领任务后才设置 TaskRuntime.running；停止或超时请求不能产生伪运行状态。
 - 扫描和编译结束统一释放对应阶段状态；视图轮询纠正失效的任务快照。
 - 包含之前暂存的概览全局默认模式、200dp 分组列表和移除快捷操作提示文案。
+
+## v1.6.13 自动周期任务日志与进度修复
+- 获取实际目标应用清单后初始化自动任务总数，避免错误显示共 0 个应用。
+- WorkManager 自动任务接入统一实时日志监听器，包含检查、跳过、ART 验证、成功/失败、结束统计。
+- Root 检查失败、任务未启动时写入诊断日志；后台任务的进度与统计同步 TaskRuntime。

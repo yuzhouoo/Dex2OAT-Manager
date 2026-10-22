@@ -60,23 +60,25 @@ final class Engine {
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,"手动执行",reset?"重置":"编译应用");}
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope){
   if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;COMPILING=true;}}
-  if(!reserved)STOP=false;long started=System.currentTimeMillis();if(!reserved)TaskRuntime.begin("自动执行 · "+scope,0);int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
+  if(!reserved)STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
    List<PackageInfo> installed=Store.installedAll(context);Map<String,PackageInfo> byPkg=new HashMap<>();for(PackageInfo p:installed)byPkg.put(p.packageName,p);
    List<String> pkgs=new ArrayList<>();if(targets==null){for(PackageInfo pi:Store.installed(context))pkgs.add(pi.packageName);}else {LinkedHashSet<String> unique=new LinkedHashSet<>(targets);for(String p:unique){if(byPkg.containsKey(p))pkgs.add(p);else {missing++;addDetail(details,p,"","missing",-1,"应用已卸载或不可见：开始前无法找到安装包");}}}
    Collections.sort(pkgs);
+   if(!reserved){TaskRuntime.begin(origin+" · "+scope,pkgs.size());if(listener!=null)listener.update("目标清单已就绪：共 "+pkgs.size()+" 个应用");}
    JSONObject marks=Store.marks(context);
    for(int i=0;i<pkgs.size();i++){
     if(STOP || (maxDurationMs>0&&System.currentTimeMillis()-started>=maxDurationMs)){timedOut=!STOP;break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
     String key=Store.fingerprint(p)+"|"+filter;
+    if(!reserved)TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
     ArtDatabase db=ArtDatabase.get(context);
     ArtState.Entry before=incremental?ArtState.query(pkg):db.getState(pkg,Store.fingerprint(p));
     if(before!=null&&incremental)db.update(context,pkg,before,"incremental-precheck",String.valueOf(started));
-    if(incremental){ArtState.Entry st=before;if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");continue;}
+    if(incremental){ArtState.Entry st=before;if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 已达标跳过："+pkg+" · "+filter);continue;}
      if(maxDurationMs>0 && key.equals(marks.optString(pkg)) && "speed-profile".equals(filter) && "verify".equals(st.filter)){
       long last=Store.pref(context).getLong("profile_attempt_"+pkg,0L);
-      if(System.currentTimeMillis()-last<86400000L){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"deferred",-1,"Profile 尚未生成或未生效，24 小时后允许再次尝试");if(listener!=null)listener.update("待重试："+pkg+"（缺少 Profile；非已达标）");continue;}
+      if(System.currentTimeMillis()-last<86400000L){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"deferred",-1,"Profile 尚未生成或未生效，24 小时后允许再次尝试");if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] 待重试："+pkg+"（缺少 Profile；非已达标）");continue;}
      }
     }
     TaskRuntime.progress(i,pkgs.size(),pkg,filter);
@@ -98,6 +100,6 @@ final class Engine {
    if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}
-  finally{if(!reserved)TaskRuntime.finish("自动任务结束");synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
+  finally{if(!reserved)TaskRuntime.finish("自动任务结束；请查看执行记录");synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
  }
 }
