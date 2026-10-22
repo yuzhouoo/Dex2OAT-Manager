@@ -1,4 +1,4 @@
-# Dex2OAT Manager v2.0.0-beta1
+# Dex2OAT Manager v2.0.0-beta2
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -192,3 +192,8 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 后台任务即使退出 APK 仍继续运行；重启后重新入队中断任务，按主 DEX ART 进行增量跳过。
 - 默认继续使用旧 APK Root 引擎，后台模式需安装模块后手动开启；目前未迁移自动周期任务、ART 扫描/数据库与所有状态展示。
 - 当前属于可安装测试的 Beta，不应作为完成的全功能 v2.0；停用后台模式即可回退旧引擎。
+
+## Beta2 修复
+- KernelSU 后台模式提交任务时先启动合法 Android 前台服务，避免 startForegroundService 启动后未调用 startForeground 的系统崩溃。
+- 异步任务提交后正确关闭前台服务、释放 Engine 任务锁，并区分入队成功与提交失败。
+- KernelSU 后台 ZIP 延续 beta1 模块，未改变执行器；ART 实际过滤器校验仍待完善。

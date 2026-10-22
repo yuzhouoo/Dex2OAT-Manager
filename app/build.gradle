@@ -7,8 +7,8 @@ android {
         applicationId 'com.example.dex2oat'
         minSdk 29
         targetSdk 35
-        versionCode 32
-        versionName '2.0.0-beta1'
+        versionCode 33
+        versionName '2.0.0-beta2'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

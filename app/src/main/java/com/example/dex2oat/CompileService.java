@@ -30,18 +30,46 @@ public final class CompileService extends Service {
   final String scope=intent.getStringExtra(EXTRA_SCOPE)==null?"选中应用":intent.getStringExtra(EXTRA_SCOPE);
   final String overrideMode=intent.getStringExtra(EXTRA_MODE);
   if(pkgs==null){Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
-  if(BackendClient.enabled(this)){
-   Engine.releaseReserved();
-   try{executor.execute(()->{
-    String mode=overrideMode!=null?overrideMode:Store.global(getApplicationContext());
-    String type=reset?"reset":incremental?"incremental":"compile";
-    String result=BackendClient.submit(type,mode,pkgs);
-    TaskRuntime.line("KernelSU 后台任务："+result);
+  final boolean backend=BackendClient.enabled(this);
+  try{
+   startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+  }catch(RuntimeException ex){
+   TaskRuntime.abort("前台服务启动失败："+ex.getClass().getSimpleName());
+   Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;
+  }
+  if(backend){
+   if(!Engine.claimReserved()){
+    TaskRuntime.abort("任务已取消或超时");
+    stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);
+    return START_NOT_STICKY;
+   }
+   TaskRuntime.begin("正在提交 KernelSU 后台任务",pkgs.size());
+   postProgress(true);
+   try{
+    executor.execute(()->{
+     try{
+      String mode=overrideMode!=null?overrideMode:Store.global(getApplicationContext());
+      String type=reset?"reset":incremental?"incremental":"compile";
+      String result=BackendClient.submit(type,mode,pkgs);
+      boolean accepted=result.startsWith("queued:");
+      TaskRuntime.finish(accepted?"已提交 KernelSU 后台任务："+result:"提交失败："+result);
+     }catch(Throwable ex){
+      TaskRuntime.finish("后台提交异常："+ex.getClass().getSimpleName());
+     }finally{
+      Engine.finishClaimedBackend();
+      postProgress(true);
+      stopForeground(STOP_FOREGROUND_REMOVE);
+      stopSelf(startId);
+     }
+    });
+   }catch(RuntimeException ex){
+    TaskRuntime.abort("后台提交调度失败："+ex.getClass().getSimpleName());
+    Engine.finishClaimedBackend();
+    stopForeground(STOP_FOREGROUND_REMOVE);
     stopSelf(startId);
-   });}catch(RuntimeException ex){TaskRuntime.line("后台提交失败："+ex);}
+   }
    return START_NOT_STICKY;
   }
-  try{startForeground(ID,notification(false),ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);}catch(RuntimeException ex){TaskRuntime.abort("前台服务启动失败："+ex.getClass().getSimpleName());Engine.releaseReserved();stopSelf(startId);return START_NOT_STICKY;}
   if(!Engine.claimReserved()){TaskRuntime.abort("启动请求已取消或超时");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf(startId);return START_NOT_STICKY;}
   TaskRuntime.begin(reset?"正在重置编译":incremental?"正在增量编译":"正在编译应用",pkgs.size());postProgress(true);
   try{executor.execute(()->{

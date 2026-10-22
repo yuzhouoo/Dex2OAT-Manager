@@ -26,6 +26,7 @@ final class Engine {
  static synchronized boolean claimReserved(){recoverPending();if(!RESERVED||STOP||!BUSY.get())return false;RESERVED=false;COMPILING=true;return true;}
  static synchronized void recoverPending(){if(RESERVED&&android.os.SystemClock.elapsedRealtime()-reservedAt>START_TIMEOUT_MS){RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务启动超时，已释放任务锁");}}
  static synchronized void abandonClaim(){if(!SCAN&&COMPILING){COMPILING=false;BUSY.set(false);STOP=false;TaskRuntime.abort("服务未能启动执行线程，已释放任务锁");}}
+ static synchronized void finishClaimedBackend(){if(COMPILING){COMPILING=false;RESERVED=false;STOP=false;BUSY.set(false);}}
  static synchronized boolean cancelPending(){if(!RESERVED)return false;RESERVED=false;BUSY.set(false);STOP=false;TaskRuntime.abort("任务在准备阶段已取消");return true;}
  static boolean scanning(){return SCAN;}
  static boolean compiling(){return COMPILING;}
