@@ -48,8 +48,10 @@ final class Store {
   }
   Collections.sort(list,(a,b)->a.packageName.compareToIgnoreCase(b.packageName));return list;
  }
- static synchronized void record(Context c,JSONObject entry){JSONArray a=history(c),out=new JSONArray();out.put(entry);for(int i=0;i<a.length() && i<99;i++)out.put(a.opt(i));write(c,"history",out);}
- static synchronized void clearHistory(Context c){write(c,"history",new JSONArray());}
+ private static volatile long historyRevision=0L;
+ static long historyRevision(){return historyRevision;}
+ static synchronized void record(Context c,JSONObject entry){JSONArray a=history(c),out=new JSONArray();out.put(entry);for(int i=0;i<a.length() && i<99;i++)out.put(a.opt(i));write(c,"history",out);historyRevision++;}
+ static synchronized void clearHistory(Context c){write(c,"history",new JSONArray());historyRevision++;}
  static synchronized void saveGroup(Context c,int editIndex,String name,String mode,Set<String> pkgs)throws Exception{
   if(name.trim().isEmpty()||!validMode(mode)||pkgs.isEmpty())throw new Exception("请填写分组名称、模式并选择应用");
   JSONArray old=groups(c),newGroups=new JSONArray();Set<String> occupied=new HashSet<>();

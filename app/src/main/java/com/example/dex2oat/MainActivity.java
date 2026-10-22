@@ -43,8 +43,23 @@ public class MainActivity extends Activity {
  private boolean systemTab=false;
  private final Handler taskHandler=new Handler(Looper.getMainLooper());
  private boolean watchedServiceTask=false;
+ private long lastHistoryRevision=-1;
+ private boolean dbRefreshPending=false;
+ private long dbRequestedRevision=-1;
  private long lastDatabaseRevision=-1;
- private final Runnable taskPulse=new Runnable(){public void run(){Engine.recoverPending();refreshLogs();if(ArtDatabase.revision()!=lastDatabaseRevision&&!Engine.scanning()){lastDatabaseRevision=ArtDatabase.revision();artStates.clear();artStates.putAll(ArtDatabase.get(getApplicationContext()).snapshot(getApplicationContext()));updateStats();if(activeTab==1)showApps();if(activeTab==2)showGroups();}TaskRuntime.Snapshot t=TaskRuntime.snapshot();if(t.running)watchedServiceTask=true;else if(watchedServiceTask&&!Engine.busy()){watchedServiceTask=false;showHistory();}updateTaskState();taskHandler.postDelayed(this,1200);}};
+ private final Runnable taskPulse=new Runnable(){public void run(){
+  Engine.recoverPending();refreshLogs();
+  if(Store.historyRevision()!=lastHistoryRevision){lastHistoryRevision=Store.historyRevision();showHistory();}
+  if(ArtDatabase.revision()!=lastDatabaseRevision && !dbRefreshPending && !Engine.scanning()){
+   dbRefreshPending=true;dbRequestedRevision=ArtDatabase.revision();
+   final long expected=dbRequestedRevision;
+   pool.execute(()->{Map<String,ArtState.Entry> fresh=ArtDatabase.get(getApplicationContext()).snapshot(getApplicationContext());
+    ui.post(()->{dbRefreshPending=false;lastDatabaseRevision=expected;artStates.clear();artStates.putAll(fresh);
+     updateStats();showApps();showGroups();updateTaskState();});
+   });
+  }
+  updateTaskState();taskHandler.postDelayed(this,1200);
+ }};
  
  private final Set<String> selected=new HashSet<>();
  private List<PackageInfo> packages=new ArrayList<>();
@@ -119,7 +134,7 @@ public class MainActivity extends Activity {
   switchPage(getIntent().getBooleanExtra("open_logs",false)?4:0);taskHandler.post(taskPulse);
  }
  private void reload(){packages=Store.installedAll(this);showApps();showGroups();showHistory();updateStats();}
- @Override protected void onResume(){super.onResume();Engine.recoverPending();updateTaskState();refreshLogs();showHistory();if(root!=null)refreshRoot();}
+ @Override protected void onResume(){super.onResume();Engine.recoverPending();updateTaskState();refreshLogs();lastHistoryRevision=Store.historyRevision();showHistory();if(root!=null)refreshRoot();}
  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("open_logs",false))switchPage(4);}
  private void refreshRoot(){if(Engine.busy())return;pool.execute(()->{if(Engine.busy())return;boolean ok=Engine.rootOk();ui.post(()->{root.setText(ok?"（Root 已授权）":"（Root 未授权）");root.setTextColor(ok?0xff188269:0xffC85A3C);});});}
  private void scanArt(){if(!Engine.beginScan()){taskBlocked();return;}scanning=true;scanDone=0;scanTotal=packages.size();phase="正在获取 ART 状态";updateTaskState();pool.execute(()->{try{if(!Engine.rootOk())return;for(PackageInfo p:new ArrayList<>(packages)){if(Engine.scanCancelled())break;ArtState.Entry item=ArtState.query(p.packageName);artStates.put(p.packageName,item);ArtDatabase.get(getApplicationContext()).update(getApplicationContext(),p.packageName,item,"full-scan",null);scanDone++;if(scanDone%8==0)ui.post(()->{if(activeTab==2)showGroups();updateStats();updateTaskState();});}}finally{if(!Engine.scanCancelled()&&scanDone==scanTotal)Store.markArtScanComplete(getApplicationContext());scanning=false;Engine.endScan();phase="";ui.post(()->{showApps();showGroups();updateStats();updateTaskState();});}}); }
@@ -198,7 +213,9 @@ public class MainActivity extends Activity {
   styledDialog().setTitle(names[category]+"（"+(users.size()+systems.size())+"）").setView(body).setPositiveButton("关闭",null).show();
  }
  private void updateStats(){if(stats==null)return;JSONObject marks=Store.marks(this);int historical=0,matched=0,unknown=0;for(PackageInfo p:packages){String wanted=Store.chosenMode(this,p.packageName);if((Store.fingerprint(p)+"|"+wanted).equals(marks.optString(p.packageName)))historical++;ArtState.Entry st=artStates.get(p.packageName);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,wanted))matched++;}renderMetrics(packages.size(),matched,packages.size()-matched-unknown,unknown);stats.setText("历史成功记录："+historical+" 个  ·  实时状态以 ART 查询为准");}
- private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean compiling=live.running;boolean pending=Engine.pending()&&!scanningNow&&!compiling;boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?live.title+" · "+live.done+"/"+live.total:pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling||pending);stopTaskButton.setAlpha(scanningNow||compiling||pending?1f:.45f);}}
+ private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean pending=Engine.pending()&&!scanningNow;
+ boolean compiling=(live.running||Engine.busy()&&!scanningNow&&!pending)&&!scanningNow;
+ boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling||pending);stopTaskButton.setAlpha(scanningNow||compiling||pending?1f:.45f);}}
  private List<String> groupMismatch(JSONObject group){List<String> mismatch=new ArrayList<>();JSONArray pk=group.optJSONArray("packages");if(pk==null)return mismatch;String mode=group.optString("mode");for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry st=artStates.get(pkg);if(st!=null&&st.known&&!ArtState.matches(st,mode))mismatch.add(pkg);}return mismatch;}
  private void refreshGroup(JSONObject group){JSONArray pk=group.optJSONArray("packages");if(pk==null)return;if(blocked())return;styledDialog().setTitle("确认刷新分组 ART 状态").setMessage("即将查询本组 "+pk.length()+" 个应用的实时 ART 状态，期间无法启动编译或其他扫描。") .setNegativeButton("取消",null).setPositiveButton("刷新",(d,w)->runGroupScan(pk)).show();}
  private void runGroupScan(JSONArray pk){if(!Engine.beginScan()){taskBlocked();return;}scanDone=0;scanTotal=pk.length();scanning=true;phase="正在刷新分组 ART 状态";updateTaskState();pool.execute(()->{try{for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry item=ArtState.query(pkg);artStates.put(pkg,item);ArtDatabase.get(getApplicationContext()).update(getApplicationContext(),pkg,item,"group-scan",null);scanDone++;}}finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showGroups();updateStats();updateTaskState();toast("分组状态刷新完成");});}}); }
