@@ -56,3 +56,18 @@ jobs:
           name: Dex2OAT-Manager-Debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Package KernelSU backend ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0755 ksu-module/service.sh ksu-module/bin/control ksu-module/bin/daemon
+          cd ksu-module
+          zip -q -r ../Dex2OAT-KernelSU-v2.0.0-beta1.zip module.prop service.sh skip_mount bin
+
+      - name: Upload KernelSU module
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dex2OAT-KernelSU-Backend
+          path: Dex2OAT-KernelSU-v2.0.0-beta1.zip
+          if-no-files-found: error

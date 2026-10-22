@@ -1,0 +1,33 @@
+#!/system/bin/sh
+set -u
+ROOT=/data/adb/dex2oat-manager
+MOD=/data/adb/modules/dex2oat_backend
+mkdir -p "$ROOT/queue" "$ROOT/done"
+chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
+valid_pkg() { case "$1" in ''|*[!a-zA-Z0-9_.]*) return 1;; esac; case "$1" in *.*) return 0;; *) return 1;; esac; }
+valid_mode() { case "$1" in speed|speed-profile|verify|everything) return 0;; *) return 1;; esac; }
+case "${1:-}" in
+ ping) test -e "$MOD/bin/daemon" && echo "backend-v2";;
+ status) if test -f "$ROOT/status"; then cat "$ROOT/status"; else echo "idle"; fi;;
+ logs) if test -f "$ROOT/events.log"; then tail -n 100 "$ROOT/events.log"; fi;;
+ stop) touch "$ROOT/stop"; echo "stop-requested";;
+ start)
+  shift
+  TYPE="${1:-}"; MODE="${2:-}"; shift 2 || exit 2
+  case "$TYPE" in compile|incremental|reset) ;; *) echo invalid-type;exit 2;; esac
+  if test "$TYPE" = reset; then MODE=verify; else valid_mode "$MODE" || { echo invalid-mode; exit 2; }; fi
+  test "$#" -gt 0 || { echo empty;exit 2; }
+  test "$#" -le 2000 || { echo too-many;exit 2; }
+  for P in "$@";do valid_pkg "$P" || { echo invalid-package;exit 2; };done
+  # Atomic producer lock prevents simultaneous jobs and partial queue files.
+  mkdir "$ROOT/submit.lock" 2>/dev/null || { echo busy;exit 3; }
+  trap 'rmdir "$ROOT/submit.lock" 2>/dev/null' EXIT
+  ID="$(date +%s)_$$"
+  TMP="$ROOT/queue/.$ID"
+  { printf '%s\n' "$TYPE" "$MODE"; for P in "$@";do printf '%s\n' "$P";done; } > "$TMP"
+  chmod 0600 "$TMP"
+  mv "$TMP" "$ROOT/queue/$ID.job"
+  echo "queued:$ID"
+  ;;
+ *) echo "usage: control ping|status|logs|start|stop";exit 2;;
+esac

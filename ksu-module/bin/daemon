@@ -1,0 +1,52 @@
+#!/system/bin/sh
+ROOT=/data/adb/dex2oat-manager
+MOD=/data/adb/modules/dex2oat_backend
+mkdir -p "$ROOT/queue" "$ROOT/done"
+chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
+mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 0
+trap 'rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
+log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }
+setstatus(){ printf '%s\n' "$*" > "$ROOT/status.tmp";mv "$ROOT/status.tmp" "$ROOT/status"; }
+# Recover interrupted active job after reboot, rechecking ART when incrementally resumed.
+if test -f "$ROOT/current.job"; then mv "$ROOT/current.job" "$ROOT/queue/recovered_$(date +%s).job";log "recovered interrupted job";fi
+setstatus idle
+while :;do
+  JOB=""
+  for F in "$ROOT"/queue/*.job;do if test -f "$F";then JOB="$F";break;fi;done
+  if test -z "$JOB";then sleep 3;continue;fi
+  mv "$JOB" "$ROOT/current.job" || continue
+  rm -f "$ROOT/stop"
+  TYPE="$(sed -n '1p' "$ROOT/current.job")"
+  MODE="$(sed -n '2p' "$ROOT/current.job")"
+  ID="${JOB##*/}"; N=0; OK=0; FAIL=0; SKIP=0
+  setstatus "running $ID"
+  log "start $ID $TYPE $MODE"
+  # Persist unprocessed entries after every app: interruption can resume.
+  while test "$(wc -l < "$ROOT/current.job")" -gt 2;do
+    if test -e "$ROOT/stop";then log "stopped $ID";break;fi
+    PKG="$(sed -n '3p' "$ROOT/current.job")"
+    case "$PKG" in ''|*[!a-zA-Z0-9_.]*) log "invalid package";break;;esac
+    N=$((N+1)); setstatus "running $ID $N $PKG $MODE"
+    ART="$(cmd package art dump "$PKG" 2>/dev/null)"
+    test -n "$ART" || ART="$(pm art dump "$PKG" 2>/dev/null)"
+    PRIMARY="$(printf '%s\n' "$ART" | sed '/known secondary dex files:/,$d' | sed -n 's/.*\[status=\([^]]*\)\].*/\1/p' | sort -u)"
+    RESULT=failed
+    if test "$TYPE" = incremental && test "$PRIMARY" = "$MODE";then RESULT=skipped;SKIP=$((SKIP+1))
+    else
+      if test "$TYPE" = reset;then OUT="$(cmd package compile --reset "$PKG" 2>&1)";else OUT="$(cmd package compile -m "$MODE" -f "$PKG" 2>&1)";fi
+      case "$OUT" in *Success*) RESULT=success;OK=$((OK+1));; *) FAIL=$((FAIL+1));; esac
+      if test "$TYPE" != reset;then
+        AFTER="$(cmd package art dump "$PKG" 2>/dev/null)"
+        printf '%s\n' "$AFTER" | grep -q 'known secondary dex files:' && cmd package compile -m "$MODE" -f --secondary-dex "$PKG" >/dev/null 2>&1
+      fi
+    fi
+    log "$ID $PKG $RESULT mode=$MODE primary=$PRIMARY"
+    # Drop completed entry atomically; durable queue advances even if APK is closed.
+    { sed -n '1,2p' "$ROOT/current.job"; sed -n '4,$p' "$ROOT/current.job"; } > "$ROOT/job.tmp"
+    mv "$ROOT/job.tmp" "$ROOT/current.job"
+  done
+  if test -e "$ROOT/stop";then setstatus "stopped $ID $N";else setstatus "completed $ID ok=$OK failed=$FAIL skipped=$SKIP";fi
+  log "$ID finished processed=$N ok=$OK failed=$FAIL skipped=$SKIP"
+  mv "$ROOT/current.job" "$ROOT/done/$ID"
+  rm -f "$ROOT/stop"
+done

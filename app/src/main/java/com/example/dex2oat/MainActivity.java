@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
  private int activeTab=0;
  private static final int BG=0xffF3F6FB, INK=0xff17263E, MUTED=0xff687991, ACCENT=0xff365BD6, BORDER=0xffDFE7F2;
  private static final int SURFACE=0xffFFFFFF, SOFT=0xffEEF3FF, SUCCESS=0xff158369, WARNING=0xffAD6B14, ERROR=0xffC44250;
- private TextView stats,root, globalTaskLabel;
+ private TextView stats,root, globalTaskLabel,backendState;
  private RecyclerView logsList; private long logRevision=-1; private List<String> visibleLogs=new ArrayList<>(); private boolean followLogs=true;
  private ProgressBar globalProgress;
  private LinearLayout statsGrid, appListRows, artModeSummary;
@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
  private volatile int scanDone=0,scanTotal=0;
  private volatile String phase="";
  private Spinner global,period;
- private Switch automatic;
+ private Switch automatic,backendToggle;
  private CheckBox autoUserApps,autoSystemApps;
  private TextView taskStatus;
  private Button stopTaskButton,userAppTab,systemAppTab;
@@ -122,7 +122,22 @@ public class MainActivity extends Activity {
   statCard.addView(artModeSummary,new LinearLayout.LayoutParams(-1,-2));
   LinearLayout globalCard=card("全局默认编译模式");LinearLayout modeLine=new LinearLayout(this);modeLine.setGravity(Gravity.CENTER_VERTICAL);globalCard.addView(modeLine,new LinearLayout.LayoutParams(-1,dp(48)));global=modeSpinner(Store.global(this));modeLine.addView(global,new LinearLayout.LayoutParams(0,dp(48),1));Button saveGlobal=makeButton("保存",()->{String mode=Store.FILTERS[global.getSelectedItemPosition()];Store.global(this,mode);toast("全局模式已保存"+("everything".equals(mode)?"；设备支持情况待验证":""));updateStats();showGroups();},true);LinearLayout.LayoutParams gbutton=new LinearLayout.LayoutParams(dp(88),dp(42));gbutton.setMargins(dp(10),0,0,0);modeLine.addView(saveGlobal,gbutton);globalCard.addView(smallLabel("未加入自定义分组的应用使用全局模式；everything 为实验性选项，Android 16 可能拒绝。"));
 
-  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
+  heading("后台执行引擎");
+  LinearLayout backendCard=card(null);
+  backendToggle=new Switch(this);backendToggle.setText("使用 KernelSU 后台引擎（实验性）");
+  backendToggle.setTextSize(13);backendToggle.setChecked(BackendClient.enabled(this));
+  backendCard.addView(backendToggle);
+  backendState=smallLabel("未检测");
+  backendCard.addView(backendState);
+  backendToggle.setOnCheckedChangeListener((button,checked)->{
+   if(Engine.busy()){button.setChecked(!checked);toast("请先完成当前任务");return;}
+   pool.execute(()->{boolean available=BackendClient.available();ui.post(()->{
+    if(checked&&!available){backendToggle.setChecked(false);toast("未检测到 KernelSU 后台模块，请安装模块 ZIP 并启动服务");return;}
+    BackendClient.enabled(this,checked);backendState.setText(checked?"KernelSU 后台模式已启用":"APK Root 引擎模式");
+   });});
+  });
+  pool.execute(()->{boolean available=BackendClient.available();ui.post(()->backendState.setText(available?"后台模块可连接 · "+(BackendClient.enabled(this)?"已启用":"未启用"):"未安装或未启动模块"));});
+  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(BackendClient.enabled(this)){pool.execute(()->{boolean ok=BackendClient.stop();ui.post(()->toast(ok?"已向后台发送停止请求":"后台未响应"));});}else if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
   heading("快捷操作");LinearLayout quick=card(null);doubleButtons(quick,"编译全部应用",()->{if(blocked())return;styledDialog().setTitle("全量编译确认").setMessage("强制编译全部目标应用可能造成发热及存储占用，建议充电时执行。") .setNegativeButton("取消",null).setPositiveButton("开始",(d,w)->{nextScope="编译全部应用";start(false,null);}).show();},"刷新全局 ART",()->confirmArtScan());
   page=screens[1];LinearLayout manage=card(null);
   LinearLayout operationRow=new LinearLayout(this);operationRow.setGravity(Gravity.CENTER_VERTICAL);
