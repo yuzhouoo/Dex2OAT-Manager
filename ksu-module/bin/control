@@ -2,7 +2,7 @@
 set -u
 ROOT=/data/adb/dex2oat-manager
 MOD=/data/adb/modules/dex2oat_backend
-mkdir -p "$ROOT/queue" "$ROOT/done"
+mkdir -p "$ROOT/queue" "$ROOT/done" "$ROOT/paused"
 chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
 valid_pkg() { case "$1" in ''|*[!a-zA-Z0-9_.]*) return 1;; esac; case "$1" in *.*) return 0;; *) return 1;; esac; }
 valid_mode() { case "$1" in speed|speed-profile|verify|everything) return 0;; *) return 1;; esac; }
@@ -12,6 +12,24 @@ case "${1:-}" in
  status) if test -f "$ROOT/status"; then cat "$ROOT/status"; else echo "idle"; fi;;
  logs) if test -f "$ROOT/events.log"; then tail -n 100 "$ROOT/events.log"; fi;;
  stop) touch "$ROOT/stop"; echo "stop-requested";;
+ resume)
+  rm -f "$ROOT/stop"
+  MOVED=0
+  for F in "$ROOT"/paused/*.job;do
+   test -f "$F" || continue
+   mv "$F" "$ROOT/queue/${F##*/}" && MOVED=$((MOVED+1))
+  done
+  echo "resumed:$MOVED"
+  ;;
+ health)
+  MODULE="$(sed -n 's/^version=//p' "$MOD/module.prop")"
+  RUNTIME="$(cat "$ROOT/runtime.version" 2>/dev/null || echo offline)"
+  if test "$MODULE" = "$RUNTIME" && test -f "$ROOT/daemon.lock/pid";then
+   PID="$(cat "$ROOT/daemon.lock/pid")"
+   case "$PID" in ''|*[!0-9]*) echo offline;exit 1;;esac
+   if kill -0 "$PID" 2>/dev/null;then echo "online version=$RUNTIME pid=$PID";else echo offline;exit 1;fi
+  else echo "offline module=$MODULE runtime=$RUNTIME";exit 1;fi
+  ;;
  start)
   shift
   TYPE="${1:-}"; MODE="${2:-}"; shift 2 || exit 2
@@ -20,6 +38,7 @@ case "${1:-}" in
   test "$#" -gt 0 || { echo empty;exit 2; }
   test "$#" -le 2000 || { echo too-many;exit 2; }
   for P in "$@";do valid_pkg "$P" || { echo invalid-package;exit 2; };done
+  "$MOD/bin/control" health >/dev/null || { echo "backend-offline";exit 4; }
   # Atomic producer lock prevents simultaneous jobs and partial queue files.
   mkdir "$ROOT/submit.lock" 2>/dev/null || { echo busy;exit 3; }
   trap 'rmdir "$ROOT/submit.lock" 2>/dev/null' EXIT

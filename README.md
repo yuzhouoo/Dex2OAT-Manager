@@ -208,3 +208,11 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 后台写入运行版本，control ping/version 报告模块版本与实际运行版本；APK 校验一致才启用后台模式。
 - 日志保留每次实际调用的模式、编译前后 ART、命令输出摘要，便于排查模式切换后 ART 不变化。
 - 不改变原有 compile -m 指令语义；ART 状态仍以主程序为准。
+
+## v2.0.0-beta6 (Beta4 浅色 UI)
+- 在 Beta4 视觉样式基础上继续开发，撤销 Beta5 深色设计。
+- KernelSU 守护进程修复 PID 记录错误（此前误写成 "$"），支持重启后检查并修复失效目录锁。
+- control health 验证模块版本、运行版本及 PID 存活；离线时拒绝新增队列任务。
+- control stop 暂停当前工作，将未处理任务移至 paused；control resume 恢复暂停任务；APK 概览提供恢复入口。
+- WorkManager 是唯一自动周期触发器；启用后台模式后按应用目标模式分批提交 KernelSU incremental 队列，不再同时通过旧 APK Root 引擎执行。
+- 当前仍属 Beta，后台执行记录还未完全归并到 APK 历史数据库；设备重启场景需要真机回归。

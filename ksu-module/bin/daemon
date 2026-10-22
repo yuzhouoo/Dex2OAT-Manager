@@ -1,7 +1,7 @@
 #!/system/bin/sh
 ROOT=/data/adb/dex2oat-manager
 MOD=/data/adb/modules/dex2oat_backend
-mkdir -p "$ROOT/queue" "$ROOT/done"
+mkdir -p "$ROOT/queue" "$ROOT/done" "$ROOT/paused"
 chmod 0700 "$ROOT" "$ROOT/queue" "$ROOT/done"
 # Recover a stale lock without replacing an active older daemon.
 live_daemon() {
@@ -24,23 +24,27 @@ if ! mkdir "$ROOT/daemon.lock" 2>/dev/null;then
 fi
 printf '%s\n' "$" > "$ROOT/daemon.lock/pid"
 trap 'rm -f "$ROOT/daemon.lock/pid";rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
-printf '%s\n' v2.0.0-beta4 > "$ROOT/runtime.version"
+printf '%s\n' v2.0.0-beta6 > "$ROOT/runtime.version"
 log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }
 setstatus(){ printf '%s\n' "$*" > "$ROOT/status.tmp";mv "$ROOT/status.tmp" "$ROOT/status"; }
 # Recover interrupted active job after reboot, rechecking ART when incrementally resumed.
 if test -f "$ROOT/current.job"; then mv "$ROOT/current.job" "$ROOT/queue/recovered_$(date +%s).job";log "recovered interrupted job";fi
-setstatus "idle version=beta4"
+setstatus "idle version=beta6"
 while :;do
   JOB=""
   for F in "$ROOT"/queue/*.job;do if test -f "$F";then JOB="$F";break;fi;done
   if test -z "$JOB";then sleep 3;continue;fi
   mv "$JOB" "$ROOT/current.job" || continue
-  rm -f "$ROOT/stop"
+  if test -e "$ROOT/stop";then
+   mv "$ROOT/current.job" "$ROOT/paused/${JOB##*/}"
+   log "paused queued job ${JOB##*/}"
+   continue
+  fi
   TYPE="$(sed -n '1p' "$ROOT/current.job")"
   MODE="$(sed -n '2p' "$ROOT/current.job")"
   ID="${JOB##*/}"; N=0; OK=0; FAIL=0; SKIP=0; MISMATCH=0
   TOTAL=$(( $(wc -l < "$ROOT/current.job") - 2 )); setstatus "running id=$ID done=0 total=$TOTAL ok=0 failed=0 skipped=0 unmatched=0"
-  log "start $ID $TYPE $MODE engine=beta4"
+  log "start $ID $TYPE $MODE engine=beta6"
   # Persist unprocessed entries after every app: interruption can resume.
   while test "$(wc -l < "$ROOT/current.job")" -gt 2;do
     if test -e "$ROOT/stop";then log "stopped $ID";break;fi
@@ -81,8 +85,13 @@ while :;do
     { sed -n '1,2p' "$ROOT/current.job"; sed -n '4,$p' "$ROOT/current.job"; } > "$ROOT/job.tmp"
     mv "$ROOT/job.tmp" "$ROOT/current.job"
   done
-  if test -e "$ROOT/stop";then setstatus "stopped id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH";else setstatus "completed id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH";fi
-  log "$ID finished processed=$N ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH"
-  mv "$ROOT/current.job" "$ROOT/done/$ID"
-  rm -f "$ROOT/stop"
+  if test -e "$ROOT/stop";then
+   setstatus "stopped id=$ID done=$N total=$TOTAL remaining=$((TOTAL-N))"
+   log "$ID stopped processed=$N remaining=$((TOTAL-N))"
+   mv "$ROOT/current.job" "$ROOT/paused/$ID"
+  else
+   setstatus "completed id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH"
+   log "$ID finished processed=$N ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH"
+   mv "$ROOT/current.job" "$ROOT/done/$ID"
+  fi
 done
