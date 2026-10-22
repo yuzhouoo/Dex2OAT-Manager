@@ -1,4 +1,4 @@
-# Dex2OAT Manager v1.6.8
+# Dex2OAT Manager v1.6.9
 
 Android 16 / KernelSU 专用 ART 编译管理器源码。项目保留 v1.2 的四页布局。
 
@@ -104,3 +104,10 @@ GitHub Actions: `.github/workflows/build.yml`，使用 JDK 17，Gradle 8.13，An
 - 启动加载上次 ART 状态快照，只在首次运行、检测到系统重新启动或用户主动刷新时全量扫描。仅完整扫描后更新开机扫描标记；部分扫描增量持久化。
 - 记录新增 origin / scope / source / destination，区分手动、WorkManager 周期、全量、选中、分组和重置。
 - 旧记录保持兼容，缺失的元数据标记为旧版记录。
+
+## v1.6.9
+- Engine 对每个执行过编译/重置的包立即调用 ART 状态查询，不依赖 Activity 返回前台。
+- SQLite 每包单行 UPSERT 缓存，含应用版本指纹、采集时间、来源及任务 ID。旧 SharedPreferences ART 快照仅首次迁移。
+- 执行记录分别保存命令结果、编译前后 ART、达标标志和验证时间。
+- 应用升级导致指纹变化后，该应用状态按未知显示直至重新扫描。
+- 任务详情支持状态筛选，保留旧版记录回退显示。

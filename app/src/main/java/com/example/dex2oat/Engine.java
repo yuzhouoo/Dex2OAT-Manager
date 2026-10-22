@@ -60,7 +60,10 @@ final class Engine {
     if(STOP || (maxDurationMs>0&&System.currentTimeMillis()-started>=maxDurationMs)){timedOut=!STOP;break;}String pkg=pkgs.get(i);PackageInfo p=byPkg.get(pkg);String filter=Store.chosenMode(context,pkg);
     String key=Store.fingerprint(p)+"|"+filter;
     // Mark records include the mode, so changing the group or global mode triggers a new compile.
-    if(incremental){ArtState.Entry st=ArtState.query(pkg);if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");continue;}
+    ArtDatabase db=ArtDatabase.get(context);
+    ArtState.Entry before=incremental?ArtState.query(pkg):db.getState(pkg,Store.fingerprint(p));
+    if(before!=null&&incremental)db.update(context,pkg,before,"incremental-precheck",String.valueOf(started));
+    if(incremental){ArtState.Entry st=before;if(ArtState.matches(st,filter)){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"skipped",-1,"ART 当前已符合目标模式");continue;}
      if(maxDurationMs>0 && key.equals(marks.optString(pkg)) && "speed-profile".equals(filter) && "verify".equals(st.filter)){
       long last=Store.pref(context).getLong("profile_attempt_"+pkg,0L);
       if(System.currentTimeMillis()-last<86400000L){skipped++;processed++;TaskRuntime.skipped();addDetail(details,pkg,filter,"deferred",-1,"Profile 尚未生成或未生效，24 小时后允许再次尝试");if(listener!=null)listener.update("待重试："+pkg+"（缺少 Profile；非已达标）");continue;}
@@ -69,14 +72,19 @@ final class Engine {
     TaskRuntime.progress(i,pkgs.size(),pkg,filter);
     if(listener!=null)listener.update("["+(i+1)+"/"+pkgs.size()+"] "+pkg+" · "+filter);
     Result r=root(reset?"cmd package compile --reset "+shellQuote(pkg):"cmd package compile -m "+filter+" -f "+shellQuote(pkg),240000);
-    boolean success=!STOP && compileSuccess(r);processed++;TaskRuntime.outcome(success);
+    boolean success=!STOP && compileSuccess(r);
+    ArtState.Entry after=ArtState.query(pkg);
+    db.update(context,pkg,after,reset?"reset-verification":"compile-verification",String.valueOf(started));
+    boolean verified=ArtState.matches(after,filter);
+    processed++;TaskRuntime.outcome(success);
+    if(listener!=null)listener.update("ART 验证 "+pkg+"：当前 "+after.filter+"，目标 "+filter+"，"+(verified?"已达标":after.known?"未达标":"未知"));
     if(success){ok++;try{if(reset){marks.remove(pkg);}else{marks.put(pkg,key);if("speed-profile".equals(filter))Store.pref(context).edit().putLong("profile_attempt_"+pkg,System.currentTimeMillis()).apply();}Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
-    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":"failed");detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
+    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":"failed");detail.put("beforeArt",before==null?"未知":before.filter);detail.put("afterArt",after.filter);detail.put("artMatch",verified);detail.put("artKnown",after.known);detail.put("verifiedAt",System.currentTimeMillis());detail.put("command","cmd package compile "+(reset?"--reset":"-m "+filter+" -f")+" "+pkg);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
     if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+("everything".equals(filter)&&!success?"设备可能不支持 everything；请改用 speed。":"")+r.out.trim());
    }
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
    int pending=pkgs.size()-processed;
-   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
+   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("verification","per-package");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
    if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}

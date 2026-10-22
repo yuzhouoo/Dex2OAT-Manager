@@ -30,6 +30,7 @@ final class Store {
  static synchronized void saveArt(Context c,java.util.Map<String,ArtState.Entry> states,boolean full){JSONObject data=new JSONObject();try{for(java.util.Map.Entry<String,ArtState.Entry> x:states.entrySet()){ArtState.Entry st=x.getValue();JSONObject d=new JSONObject();d.put("mode",st.filter);d.put("known",st.known);d.put("mixed",st.mixed);data.put(x.getKey(),d);}}catch(Exception ignored){}
  android.content.SharedPreferences.Editor editor=pref(c).edit().putString("art_snapshot",data.toString()).putLong("art_saved_at",System.currentTimeMillis());
  if(full){editor.putInt("last_art_boot",bootCount(c)).putLong("last_scan_elapsed",android.os.SystemClock.elapsedRealtime());}editor.commit();}
+ static void markArtScanComplete(Context c){pref(c).edit().putInt("last_art_boot",bootCount(c)).putLong("last_scan_elapsed",android.os.SystemClock.elapsedRealtime()).commit();}
  static boolean hasArtSnapshot(Context c){return pref(c).contains("art_snapshot");}
  static boolean validMode(String m){for(String a:FILTERS)if(a.equals(m))return true;return false;}
  static String chosenMode(Context c,String pkg){JSONArray a=groups(c);for(int i=0;i<a.length();i++){
