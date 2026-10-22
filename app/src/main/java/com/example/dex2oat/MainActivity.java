@@ -116,15 +116,16 @@ public class MainActivity extends Activity {
   heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
   heading("快捷操作");LinearLayout quick=card(null);doubleButtons(quick,"编译全部应用",()->{if(blocked())return;styledDialog().setTitle("全量编译确认").setMessage("强制编译全部目标应用可能造成发热及存储占用，建议充电时执行。") .setNegativeButton("取消",null).setPositiveButton("开始",(d,w)->{nextScope="编译全部应用";start(false,null);}).show();},"刷新全局 ART",()->confirmArtScan());
   page=screens[1];LinearLayout manage=card(null);
-  doubleButtons(manage,"扫描增量应用",()->confirmCompile(true,null),"编译选中应用",()->{
- if(selected.isEmpty()){toast("请先选择应用");return;}
- List<String> copy=new ArrayList<>(selected);
- LinearLayout content=vertical();content.setPadding(dp(18),dp(8),dp(18),dp(8));
- content.addView(smallLabel("本次选择 "+copy.size()+" 个应用，默认全局模式；仅改变本次任务。"));
- Spinner onceMode=modeSpinner(Store.global(this));content.addView(onceMode,new LinearLayout.LayoutParams(-1,dp(54)));
- styledDialog().setTitle("确认本次编译模式").setView(content).setNegativeButton("取消",null)
-  .setPositiveButton("开始",(dialog,which)->startCompileWithMode(false,copy,"编译选中应用",Store.FILTERS[onceMode.getSelectedItemPosition()])).show();
-});
+  LinearLayout operationRow=new LinearLayout(this);operationRow.setGravity(Gravity.CENTER_VERTICAL);
+  manage.addView(operationRow,new LinearLayout.LayoutParams(-1,dp(46)));
+  Button scanBtn=makeButton("扫描增量",()->confirmCompile(true,null),false);
+  Button refreshBtn=makeButton("刷新状态",()->refreshSelectedApps(),false);
+  Button compileBtn=makeButton("编译应用",()->confirmSelectedMode(),true);
+  Button resetBtn=makeButton("重置应用",()->confirmReset(new ArrayList<>(selected)),false);
+  Button[] operations={scanBtn,refreshBtn,compileBtn,resetBtn};
+  for(int j=0;j<operations.length;j++){operations[j].setTextSize(11);operations[j].setPadding(dp(1),0,dp(1),0);
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(42),1);
+   if(j>0)lp.leftMargin=dp(3);operationRow.addView(operations[j],lp);}
   LinearLayout appTabs=new LinearLayout(this);LinearLayout.LayoutParams tabParams=new LinearLayout.LayoutParams(-1,dp(48));tabParams.setMargins(0,dp(14),0,dp(8));appTabs.setPadding(dp(3),dp(3),dp(3),dp(3));appTabs.setBackground(shape(0xffEEF2FF,0,13));manage.addView(appTabs,tabParams);
   userAppTab=makeButton("用户应用",()->{saveListScroll();systemTab=false;showApps();},true);systemAppTab=makeButton("系统应用",()->{saveListScroll();systemTab=true;showApps();},false);
   LinearLayout.LayoutParams userTabLp=new LinearLayout.LayoutParams(0,-1,1);userTabLp.setMargins(0,0,dp(1),0);appTabs.addView(userAppTab,userTabLp);LinearLayout.LayoutParams systemTabLp=new LinearLayout.LayoutParams(0,-1,1);systemTabLp.setMargins(dp(1),0,0,0);appTabs.addView(systemAppTab,systemTabLp);
@@ -148,21 +149,7 @@ public class MainActivity extends Activity {
    public void onTextChanged(CharSequence s,int start,int before,int count){appSearchText=s.toString().trim().toLowerCase(java.util.Locale.ROOT);userScroll=0;systemScroll=0;showApps();}
    public void afterTextChanged(android.text.Editable e){}
   });
-  Button refreshSelected=makeButton("刷新选中应用 ART 状态",()->{
-   if(blocked())return;
-   if(selected.isEmpty()){toast("请先选择需要刷新的应用");return;}
-   List<String> target=new ArrayList<>(selected);Collections.sort(target);
-   styledDialog().setTitle("刷新选中应用 ART").setMessage("仅查询已选中的 "+target.size()+" 个应用，不执行编译。")
-    .setNegativeButton("取消",null).setPositiveButton("开始刷新",(d,w)->scanSelectedArt(target)).show();
-  },false);
- LinearLayout actions=new LinearLayout(this);actions.setGravity(Gravity.CENTER_VERTICAL);
- manage.addView(actions,new LinearLayout.LayoutParams(-1,dp(48)));
- Button resetSelection=makeButton("重置选中应用",()->confirmReset(new ArrayList<>(selected)),false);
- LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,dp(44),1);left.setMargins(0,0,dp(4),0);
- actions.addView(refreshSelected,left);
- LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,dp(44),1);right.setMargins(dp(4),0,0,0);
- actions.addView(resetSelection,right);
-  appsList=createList(manage,440);
+  appsList=createList(manage,220);attachFillRemaining(screens[1],appsList);
   page=screens[2];
   LinearLayout autoCard=card(null);automatic=new Switch(this);automatic.setText("开启自动周期扫描");automatic.setTextSize(14);automatic.setChecked(Store.auto(this));autoCard.addView(automatic);
   LinearLayout periodLine=new LinearLayout(this);periodLine.setGravity(Gravity.CENTER_VERTICAL);autoCard.addView(periodLine,new LinearLayout.LayoutParams(-1,dp(48)));period=new Spinner(this);String[] intervals=new String[hours.length];for(int i=0;i<hours.length;i++)intervals[i]=hours[i]+" 小时";period.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,intervals));for(int i=0;i<hours.length;i++)if(hours[i]==Store.interval(this))period.setSelection(i);periodLine.addView(period,new LinearLayout.LayoutParams(0,dp(48),1));Button savePeriod=makeButton("保存",()->{
@@ -181,10 +168,10 @@ public class MainActivity extends Activity {
   autoCard.addView(smallLabel("只检查勾选的应用类型；未变化且已达标的应用直接跳过。"));
   LinearLayout groupHeading=new LinearLayout(this);groupHeading.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);page.addView(groupHeading,new LinearLayout.LayoutParams(-1,dp(54)));Button addGroup=makeButton("＋ 新建编译分组",()->editGroup(-1),true);LinearLayout.LayoutParams addLp=new LinearLayout.LayoutParams(dp(150),dp(40));groupHeading.addView(addGroup,addLp);
   TextView sub=smallLabel("分组策略优先于全局模式，每个应用只能加入一个分组。");page.addView(sub);
-  LinearLayout groupHost=card(null);groupsList=createList(groupHost,200);
-  page=screens[3];LinearLayout historyActions=card(null);button("清空执行历史",historyActions,()->styledDialog().setMessage("清空任务记录？成功编译标记将保留。") .setNegativeButton("取消",null).setPositiveButton("清空",(d,w)->{Store.clearHistory(this);showHistory();}).show());LinearLayout historyCard=card(null);historyList=createList(historyCard,260);
+  LinearLayout groupHost=card(null);groupsList=createList(groupHost,220);attachFillRemaining(screens[2],groupsList);
+  page=screens[3];LinearLayout historyActions=card(null);button("清空执行历史",historyActions,()->styledDialog().setMessage("清空任务记录？成功编译标记将保留。") .setNegativeButton("取消",null).setPositiveButton("清空",(d,w)->{Store.clearHistory(this);showHistory();}).show());LinearLayout historyCard=card(null);historyList=createList(historyCard,220);attachFillRemaining(screens[3],historyList);
   page=screens[4];page.setPadding(dp(14),dp(12),dp(14),dp(12));
-  LinearLayout logsCard=card(null);logsCard.setPadding(dp(9),dp(10),dp(9),dp(10));logsList=createList(logsCard,520);logsList.setAdapter(new RecyclerView.Adapter<RowHolder>(){public RowHolder onCreateViewHolder(android.view.ViewGroup parent,int type){android.widget.FrameLayout host=new android.widget.FrameLayout(MainActivity.this);host.setLayoutParams(new RecyclerView.LayoutParams(-1,-2));return new RowHolder(host);}public void onBindViewHolder(RowHolder holder,int position){holder.container.removeAllViews();TextView item=smallLabel(visibleLogs.get(position));item.setTextSize(12);item.setTextIsSelectable(true);item.setPadding(dp(8),dp(6),dp(8),dp(6));holder.container.addView(item,new android.widget.FrameLayout.LayoutParams(-1,-2));}public int getItemCount(){return visibleLogs.size();}});logsList.addOnScrollListener(new RecyclerView.OnScrollListener(){
+  LinearLayout logsCard=card(null);logsCard.setPadding(dp(9),dp(10),dp(9),dp(10));logsList=createList(logsCard,220);attachFillRemaining(screens[4],logsList);logsList.setAdapter(new RecyclerView.Adapter<RowHolder>(){public RowHolder onCreateViewHolder(android.view.ViewGroup parent,int type){android.widget.FrameLayout host=new android.widget.FrameLayout(MainActivity.this);host.setLayoutParams(new RecyclerView.LayoutParams(-1,-2));return new RowHolder(host);}public void onBindViewHolder(RowHolder holder,int position){holder.container.removeAllViews();TextView item=smallLabel(visibleLogs.get(position));item.setTextSize(12);item.setTextIsSelectable(true);item.setPadding(dp(8),dp(6),dp(8),dp(6));holder.container.addView(item,new android.widget.FrameLayout.LayoutParams(-1,-2));}public int getItemCount(){return visibleLogs.size();}});logsList.addOnScrollListener(new RecyclerView.OnScrollListener(){
    @Override public void onScrolled(RecyclerView rv,int dx,int dy){if(dy>0)followLogs=false;else if(!rv.canScrollVertically(-1))followLogs=true;}
   });
   refreshLogs();
@@ -221,6 +208,23 @@ public class MainActivity extends Activity {
   }
   list.add(p);
  }return list;}
+ private void attachFillRemaining(LinearLayout screen,RecyclerView list){
+  // Screen content is contained in a viewport-sized ScrollView. Occupy remaining visible
+  // space after the toolbars, with bottom padding kept inside the viewport's system insets.
+  ScrollView scroll=(ScrollView)screen.getTag();
+  scroll.getViewTreeObserver().addOnGlobalLayoutListener(()->{
+   if(scroll.getHeight()<=0 || list.getParent()==null)return;
+   int top=0;View child=list;
+   while(child!=null&&child!=screen){
+    top+=child.getTop();
+    if(!(child.getParent() instanceof View))break;
+    child=(View)child.getParent();
+   }
+   int desired=Math.max(dp(160),scroll.getHeight()-top-dp(48));
+   android.view.ViewGroup.LayoutParams lp=list.getLayoutParams();
+   if(lp.height!=desired){lp.height=desired;list.setLayoutParams(lp);}
+  });
+ }
  private RecyclerView createList(LinearLayout host,int height){RecyclerView v=new RecyclerView(this);v.setLayoutManager(new LinearLayoutManager(this));v.setNestedScrollingEnabled(true);v.setHasFixedSize(true);v.setVerticalScrollBarEnabled(true);v.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);v.setOnTouchListener((view,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)view.getParent().requestDisallowInterceptTouchEvent(true);if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);return false;});host.addView(v,new LinearLayout.LayoutParams(-1,dp(height)));return v;}
  private interface RowFactory{View make(int index);}
  private static final class RowHolder extends RecyclerView.ViewHolder{final android.widget.FrameLayout container;RowHolder(android.widget.FrameLayout c){super(c);container=c;}}
@@ -305,6 +309,23 @@ public class MainActivity extends Activity {
  }
  private void runGroupScan(JSONArray pk){if(!Engine.beginScan()){taskBlocked();return;}scanDone=0;scanTotal=pk.length();scanning=true;phase="正在刷新分组 ART 状态";updateTaskState();pool.execute(()->{try{for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry item=ArtState.query(pkg);artStates.put(pkg,item);ArtDatabase.get(getApplicationContext()).update(getApplicationContext(),pkg,item,"group-scan",null);scanDone++;}}finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showGroups();updateStats();updateTaskState();toast("分组状态刷新完成");});}}); }
  private void confirmArtScan(){if(blocked())return;styledDialog().setTitle("确认刷新全局 ART").setMessage("即将查询全部 "+packages.size()+" 个应用的 ART 状态。刷新过程中仍可浏览和选择应用。") .setNegativeButton("取消",null).setPositiveButton("开始刷新",(d,w)->scanArt()).show();}
+ private void refreshSelectedApps(){
+  if(blocked())return;
+  if(selected.isEmpty()){toast("请先选择需要刷新的应用");return;}
+  List<String> targets=new ArrayList<>(selected);Collections.sort(targets);
+  styledDialog().setTitle("刷新选中应用 ART").setMessage("仅查询已选中的 "+targets.size()+" 个应用，不执行编译。")
+   .setNegativeButton("取消",null).setPositiveButton("刷新",(d,w)->scanSelectedArt(targets)).show();
+ }
+ private void confirmSelectedMode(){
+  if(blocked())return;
+  if(selected.isEmpty()){toast("请先选择应用");return;}
+  List<String> targets=new ArrayList<>(selected);
+  LinearLayout body=vertical();body.setPadding(dp(18),dp(8),dp(18),dp(8));
+  body.addView(smallLabel("本次选择 "+targets.size()+" 个应用，默认全局编译模式，仅对本次有效。"));
+  Spinner oneTime=modeSpinner(Store.global(this));body.addView(oneTime,new LinearLayout.LayoutParams(-1,dp(54)));
+  styledDialog().setTitle("确认本次编译模式").setView(body).setNegativeButton("取消",null)
+   .setPositiveButton("开始",(d,w)->startCompileWithMode(false,targets,"编译选中应用",Store.FILTERS[oneTime.getSelectedItemPosition()])).show();
+ }
  private void confirmCompile(boolean incremental,List<String> target){if(blocked())return;int n=target==null?packages.size():target.size();styledDialog().setTitle(incremental?"确认增量编译":"确认编译").setMessage("目标："+n+" 个应用。执行前会按当前策略检查，开始后使用已确定的包名快照。") .setNegativeButton("取消",null).setPositiveButton("确认执行",(d,w)->{nextScope=incremental?"扫描增量应用":"编译选中应用";start(incremental,target);}).show();}
  private void compileGroup(JSONObject group){
  if(blocked())return;JSONArray pk=group.optJSONArray("packages");
