@@ -69,5 +69,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Dex2OAT-KernelSU-Backend
-          path: Dex2OAT-KernelSU-v2.0.0-beta6.1.zip
+          path: Dex2OAT-KernelSU-v2.0.0-beta6.3.zip
           if-no-files-found: error
