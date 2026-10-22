@@ -22,7 +22,7 @@ if ! mkdir "$ROOT/daemon.lock" 2>/dev/null;then
  mkdir "$ROOT/daemon.lock" 2>/dev/null || exit 1
 fi
 trap 'rm -f "$ROOT/daemon.lock/pid";rmdir "$ROOT/daemon.lock" 2>/dev/null' EXIT
-printf '%s\n' v2.0.0-beta6 > "$ROOT/runtime.version"
+printf '%s\n' v2.0.0-beta6.1 > "$ROOT/runtime.version"
 log(){ printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$ROOT/events.log"; }
 setstatus(){ printf '%s\n' "$*" > "$ROOT/status.tmp";mv "$ROOT/status.tmp" "$ROOT/status"; }
 # Recover interrupted active job after reboot, rechecking ART when incrementally resumed.

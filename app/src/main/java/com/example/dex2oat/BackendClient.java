@@ -11,7 +11,7 @@ final class BackendClient {
  private static final Pattern PACKAGE=Pattern.compile("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+");
  static boolean enabled(Context ctx){return Store.pref(ctx).getBoolean("backend_enabled",false);}
  static void enabled(Context ctx,boolean value){Store.pref(ctx).edit().putBoolean("backend_enabled",value).apply();}
- static boolean available(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" health",0);return r.code==0&&r.out.contains("online version=v2.0.0-beta6");}
+ static boolean available(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" health",0);return r.code==0&&r.out.contains("online version=v2.0.0-beta6.1");}
  static boolean resume(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" resume",0);return r.code==0&&r.out.contains("resumed:");}
  static String version(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" version",0);return r.code==0?r.out.trim():"offline";}
  static String status(){Engine.Result r=Engine.root(Engine.shellQuote(CONTROL)+" status",0);return r.code==0?r.out.trim():"backend-offline";}
