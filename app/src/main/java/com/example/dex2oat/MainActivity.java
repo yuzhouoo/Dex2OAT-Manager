@@ -33,7 +33,8 @@ public class MainActivity extends Activity {
  private TextView stats,root, globalTaskLabel;
  private RecyclerView logsList; private long logRevision=-1; private List<String> visibleLogs=new ArrayList<>(); private boolean followLogs=true;
  private ProgressBar globalProgress;
- private LinearLayout statsGrid, appListRows;
+ private LinearLayout statsGrid, appListRows, artModeSummary;
+ private TextView modeFilterClear;
  private volatile int scanDone=0,scanTotal=0;
  private volatile String phase="";
  private Spinner global,period;
@@ -45,6 +46,7 @@ public class MainActivity extends Activity {
  private EditText appPackageSearch;
  private int appStateSelection=0;
  private String appSearchText="";
+ private String appModeFilter=null;
  private boolean systemTab=false;
  private final Handler taskHandler=new Handler(Looper.getMainLooper());
  private boolean watchedServiceTask=false;
@@ -111,6 +113,8 @@ public class MainActivity extends Activity {
   
   LinearLayout statCard=card(null);statCard.setPadding(dp(18),dp(16),dp(18),dp(17));statsGrid=new LinearLayout(this);statCard.addView(statsGrid,new LinearLayout.LayoutParams(-1,-2));stats=text("正在统计…",12);stats.setTextColor(MUTED);statCard.addView(stats);
   TextView hint=smallLabel("实际 ART 达标与历史成功分开统计 · 未知状态不视为失败");statCard.addView(hint);
+  artModeSummary=vertical();artModeSummary.setPadding(0,dp(10),0,0);
+  statCard.addView(artModeSummary,new LinearLayout.LayoutParams(-1,-2));
   LinearLayout globalCard=card("全局默认编译模式");LinearLayout modeLine=new LinearLayout(this);modeLine.setGravity(Gravity.CENTER_VERTICAL);globalCard.addView(modeLine,new LinearLayout.LayoutParams(-1,dp(48)));global=modeSpinner(Store.global(this));modeLine.addView(global,new LinearLayout.LayoutParams(0,dp(48),1));Button saveGlobal=makeButton("保存",()->{String mode=Store.FILTERS[global.getSelectedItemPosition()];Store.global(this,mode);toast("全局模式已保存"+("everything".equals(mode)?"；设备支持情况待验证":""));updateStats();showGroups();},true);LinearLayout.LayoutParams gbutton=new LinearLayout.LayoutParams(dp(88),dp(42));gbutton.setMargins(dp(10),0,0,0);modeLine.addView(saveGlobal,gbutton);globalCard.addView(smallLabel("未加入自定义分组的应用使用全局模式；everything 为实验性选项，Android 16 可能拒绝。"));
 
   heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
@@ -131,6 +135,10 @@ public class MainActivity extends Activity {
   LinearLayout.LayoutParams userTabLp=new LinearLayout.LayoutParams(0,-1,1);userTabLp.setMargins(0,0,dp(1),0);appTabs.addView(userAppTab,userTabLp);LinearLayout.LayoutParams systemTabLp=new LinearLayout.LayoutParams(0,-1,1);systemTabLp.setMargins(dp(1),0,0,0);appTabs.addView(systemAppTab,systemTabLp);
   LinearLayout selectLine=new LinearLayout(this);selectLine.setGravity(Gravity.CENTER_VERTICAL);manage.addView(selectLine,new LinearLayout.LayoutParams(-1,dp(43)));
   classSelect=new CheckBox(this);classSelect.setButtonTintList(ColorStateList.valueOf(ACCENT));selectLine.addView(classSelect);classCounter=smallLabel("");selectLine.addView(classCounter,new LinearLayout.LayoutParams(0,-2,1));
+  modeFilterClear=smallLabel("");modeFilterClear.setTextColor(ACCENT);
+  modeFilterClear.setPadding(dp(5),dp(8),dp(5),dp(8));
+  selectLine.addView(modeFilterClear);
+  modeFilterClear.setOnClickListener(v->{appModeFilter=null;userScroll=0;systemScroll=0;showApps();});
   classSelect.setOnClickListener(v->{boolean on=classSelect.isChecked();for(PackageInfo a:filtered()){if(on)selected.add(a.packageName);else selected.remove(a.packageName);}showApps();});
   LinearLayout filterLine=new LinearLayout(this);filterLine.setGravity(Gravity.CENTER_VERTICAL);manage.addView(filterLine,new LinearLayout.LayoutParams(-1,dp(48)));
   TextView filterTitle=smallLabel("状态筛选");filterLine.addView(filterTitle,new LinearLayout.LayoutParams(dp(52),-2));
@@ -198,6 +206,7 @@ public class MainActivity extends Activity {
  private List<PackageInfo> filtered(){List<PackageInfo> list=new ArrayList<>();for(PackageInfo p:packages){
   if(p.applicationInfo==null||isSystemApp(p)!=systemTab)continue;
   ArtState.Entry state=artStates.get(p.packageName);
+  if(appModeFilter!=null&&!appModeFilter.equals(state==null||!state.known?"未知":state.filter))continue;
   boolean match=state!=null&&ArtState.matches(state,Store.chosenMode(this,p.packageName));
   if(appStateSelection==1&&!match)continue;
   if(appStateSelection==2&&(state==null||!state.known||match))continue;
@@ -235,7 +244,8 @@ public class MainActivity extends Activity {
  };}
  private void saveListScroll(){if(appsList==null)return;LinearLayoutManager lm=(LinearLayoutManager)appsList.getLayoutManager();if(systemTab)systemScroll=lm.findFirstVisibleItemPosition();else userScroll=lm.findFirstVisibleItemPosition();}
  private void refreshSelectCounts(){if(classSelect==null)return;List<PackageInfo> list=filtered();int n=0;for(PackageInfo p:list)if(selected.contains(p.packageName))n++;classCounter.setText((systemTab?"系统应用":"用户应用")+"  "+n+" / "+list.size()+"   ·   全部已选 "+selected.size());classSelect.setOnCheckedChangeListener(null);classSelect.setChecked(!list.isEmpty()&&n==list.size());classSelect.setAlpha(n>0&&n<list.size()?.65f:1f);}
- private void showApps(){if(appsList==null)return;if(userAppTab!=null){userAppTab.setTextColor(systemTab?ACCENT:Color.WHITE);userAppTab.setBackground(clickShape(systemTab?0xffEEF2FF:ACCENT,0,10));systemAppTab.setTextColor(systemTab?Color.WHITE:ACCENT);systemAppTab.setBackground(clickShape(systemTab?ACCENT:0xffEEF2FF,0,10));}List<PackageInfo> list=filtered();if(renderedSystemTab!=null&&renderedSystemTab.booleanValue()==systemTab)saveListScroll();refreshSelectCounts();appsList.setAdapter(adapter(list.size(),position->appRow(list.get(position))));appsList.scrollToPosition(Math.max(0,systemTab?systemScroll:userScroll));renderedSystemTab=systemTab;}
+ private void showApps(){if(appsList==null)return;
+ if(modeFilterClear!=null){modeFilterClear.setText(appModeFilter==null?"":"ART "+appModeFilter+" ×");modeFilterClear.setVisibility(appModeFilter==null?View.GONE:View.VISIBLE);}if(userAppTab!=null){userAppTab.setTextColor(systemTab?ACCENT:Color.WHITE);userAppTab.setBackground(clickShape(systemTab?0xffEEF2FF:ACCENT,0,10));systemAppTab.setTextColor(systemTab?Color.WHITE:ACCENT);systemAppTab.setBackground(clickShape(systemTab?ACCENT:0xffEEF2FF,0,10));}List<PackageInfo> list=filtered();if(renderedSystemTab!=null&&renderedSystemTab.booleanValue()==systemTab)saveListScroll();refreshSelectCounts();appsList.setAdapter(adapter(list.size(),position->appRow(list.get(position))));appsList.scrollToPosition(Math.max(0,systemTab?systemScroll:userScroll));renderedSystemTab=systemTab;}
  private View appRow(PackageInfo p){PackageManager pm=getPackageManager();ArtState.Entry st=artStates.get(p.packageName);String actual=st==null?"待扫描":st.filter;String desired=Store.chosenMode(this,p.packageName);boolean match=st!=null&&ArtState.matches(st,desired);LinearLayout item=new LinearLayout(this);item.setGravity(Gravity.CENTER_VERTICAL);item.setPadding(dp(5),dp(5),dp(5),dp(5));item.setBackground(clickShape(selected.contains(p.packageName)?0xffEEF2FF:Color.WHITE,BORDER,10));LinearLayout outer=vertical();LinearLayout.LayoutParams il=new LinearLayout.LayoutParams(-1,-2);il.setMargins(0,dp(2),0,dp(3));outer.addView(item,il);CheckBox cb=new CheckBox(this);cb.setButtonTintList(ColorStateList.valueOf(ACCENT));cb.setChecked(selected.contains(p.packageName));item.addView(cb);ImageView icon=new ImageView(this);try{icon.setImageDrawable(pm.getApplicationIcon(p.applicationInfo));}catch(Exception ignored){icon.setImageResource(android.R.drawable.sym_def_app_icon);}LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(34),dp(34));ip.setMargins(0,0,dp(9),0);item.addView(icon,ip);LinearLayout content=vertical();item.addView(content,new LinearLayout.LayoutParams(0,-2,1));TextView name=text(String.valueOf(pm.getApplicationLabel(p.applicationInfo)),13);name.setTypeface(null,Typeface.BOLD);name.setPadding(0,0,0,0);name.setSingleLine(true);name.setEllipsize(android.text.TextUtils.TruncateAt.END);content.addView(name);TextView pkg=smallLabel(p.packageName);pkg.setTextSize(10);pkg.setPadding(0,0,0,0);pkg.setSingleLine(true);pkg.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);content.addView(pkg);TextView modesLabel=smallLabel(actual+" → "+desired);modesLabel.setTextSize(10);modesLabel.setPadding(0,0,0,0);modesLabel.setTextColor(match?0xff188269:(st==null||!st.known?MUTED:0xffB96C2B));content.addView(modesLabel);cb.setOnCheckedChangeListener((v,on)->{if(on)selected.add(p.packageName);else selected.remove(p.packageName);item.setBackground(clickShape(on?0xffEEF2FF:Color.WHITE,BORDER,10));refreshSelectCounts();});item.setOnClickListener(v->cb.setChecked(!cb.isChecked()));item.setOnLongClickListener(v->{styledDialog().setTitle(p.packageName).setMessage(st==null?"ART 状态尚未扫描":st.detail).setPositiveButton("关闭",null).show();return true;});return outer;}
 
  private void showMetricDetails(int category){
@@ -285,7 +295,61 @@ public class MainActivity extends Activity {
   render.run();
   styledDialog().setTitle(names[category]+"（"+(users.size()+systems.size())+"）").setView(body).setPositiveButton("关闭",null).show();
  }
- private void updateStats(){if(stats==null)return;JSONObject marks=Store.marks(this);int historical=0,matched=0,unknown=0;for(PackageInfo p:packages){String wanted=Store.chosenMode(this,p.packageName);if((Store.fingerprint(p)+"|"+wanted).equals(marks.optString(p.packageName)))historical++;ArtState.Entry st=artStates.get(p.packageName);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,wanted))matched++;}renderMetrics(packages.size(),matched,packages.size()-matched-unknown,unknown);stats.setText("历史成功记录："+historical+" 个  ·  实时状态以 ART 查询为准");}
+ private void updateStats(){if(stats==null)return;JSONObject marks=Store.marks(this);int historical=0,matched=0,unknown=0;
+ LinkedHashMap<String,Integer> userModes=new LinkedHashMap<>(),systemModes=new LinkedHashMap<>();
+ for(PackageInfo p:packages){
+  String wanted=Store.chosenMode(this,p.packageName);
+  if((Store.fingerprint(p)+"|"+wanted).equals(marks.optString(p.packageName)))historical++;
+  ArtState.Entry st=artStates.get(p.packageName);
+  if(st==null||!st.known)unknown++;else if(ArtState.matches(st,wanted))matched++;
+  if(p.applicationInfo!=null){
+   String mode=st==null||!st.known?"未知":st.filter;
+   Map<String,Integer> histogram=isSystemApp(p)?systemModes:userModes;
+   histogram.put(mode,histogram.getOrDefault(mode,0)+1);
+  }
+ }
+ renderMetrics(packages.size(),matched,packages.size()-matched-unknown,unknown);
+ stats.setText("历史成功记录："+historical+" 个  ·  实时状态以 ART 查询为准");
+ renderArtModeSummary(userModes,systemModes);
+}
+private void renderArtModeSummary(Map<String,Integer> userModes,Map<String,Integer> systemModes){
+ if(artModeSummary==null)return;
+ artModeSummary.removeAllViews();
+ renderArtModeSection("用户应用",false,userModes);
+ renderArtModeSection("系统应用",true,systemModes);
+}
+private void renderArtModeSection(String title,boolean system,Map<String,Integer> histogram){
+ TextView titleView=text(title,13);titleView.setTypeface(null,Typeface.BOLD);
+ titleView.setPadding(0,dp(7),0,dp(4));artModeSummary.addView(titleView);
+ if(histogram.isEmpty()){artModeSummary.addView(smallLabel("暂无应用"));return;}
+ String[] order={"everything","speed","speed-profile","verify","quicken","extract","assume-verified","run-from-apk","run-from-apk-fallback","混合","未知"};
+ List<String> modes=new ArrayList<>(histogram.keySet());
+ modes.sort((a,b)->{int ai=java.util.Arrays.asList(order).indexOf(a),bi=java.util.Arrays.asList(order).indexOf(b);
+  if(ai<0)ai=order.length;if(bi<0)bi=order.length;return ai==bi?a.compareTo(b):Integer.compare(ai,bi);});
+ LinearLayout line=new LinearLayout(this);line.setOrientation(LinearLayout.HORIZONTAL);
+ artModeSummary.addView(line,new LinearLayout.LayoutParams(-1,-2));
+ int columns=0;
+ for(String mode:modes){
+  if(columns==2){line=new LinearLayout(this);line.setOrientation(LinearLayout.HORIZONTAL);artModeSummary.addView(line,new LinearLayout.LayoutParams(-1,-2));columns=0;}
+  final String chosen=mode;
+  TextView chip=text(mode+"："+histogram.get(mode),12);
+  chip.setTextColor(ACCENT);chip.setGravity(Gravity.CENTER_VERTICAL);
+  chip.setPadding(dp(10),dp(8),dp(6),dp(8));
+  chip.setBackground(clickShape(0xffEEF2FF,BORDER,9));
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
+  lp.setMargins(dp(2),dp(2),dp(2),dp(2));line.addView(chip,lp);
+  chip.setOnClickListener(v->openArtModeApplications(system,chosen));columns++;
+ }
+ if(columns==1){View filler=new View(this);line.addView(filler,new LinearLayout.LayoutParams(0,1,1));}
+}
+private void openArtModeApplications(boolean system,String mode){
+ systemTab=system;appModeFilter=mode;appStateSelection=0;appSearchText="";
+ if(appStatusFilter!=null)appStatusFilter.setSelection(0);
+ if(appPackageSearch!=null)appPackageSearch.setText("");
+ userScroll=0;systemScroll=0;renderedSystemTab=null;
+ switchPage(1);showApps();
+ toast((system?"系统应用":"用户应用")+" · "+mode+"（点击应用页分类可切换，模式筛选保留）");
+}
  private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean pending=Engine.pending()&&!scanningNow;
  boolean compiling=Engine.compiling()&&!scanningNow;
  boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling||pending);stopTaskButton.setAlpha(scanningNow||compiling||pending?1f:.45f);}}
