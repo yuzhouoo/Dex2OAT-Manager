@@ -58,7 +58,7 @@ final class Engine {
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,"手动执行",reset?"重置":"编译应用");}
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope){
   if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;}}
-  STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
+  if(!reserved)STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
    List<PackageInfo> installed=Store.installedAll(context);Map<String,PackageInfo> byPkg=new HashMap<>();for(PackageInfo p:installed)byPkg.put(p.packageName,p);
    List<String> pkgs=new ArrayList<>();if(targets==null){for(PackageInfo pi:Store.installed(context))pkgs.add(pi.packageName);}else {LinkedHashSet<String> unique=new LinkedHashSet<>(targets);for(String p:unique){if(byPkg.containsKey(p))pkgs.add(p);else {missing++;addDetail(details,p,"","missing",-1,"应用已卸载或不可见：开始前无法找到安装包");}}}
