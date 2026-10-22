@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
  private int activeTab=0;
  private static final int BG=0xffF3F6FB, INK=0xff17263E, MUTED=0xff687991, ACCENT=0xff365BD6, BORDER=0xffDFE7F2;
  private static final int SURFACE=0xffFFFFFF, SOFT=0xffEEF3FF, SUCCESS=0xff158369, WARNING=0xffAD6B14, ERROR=0xffC44250;
- private TextView stats,root, globalTaskLabel,backendState;
+ private TextView stats,root, globalTaskLabel;
  private RecyclerView logsList; private long logRevision=-1; private List<String> visibleLogs=new ArrayList<>(); private boolean followLogs=true;
  private ProgressBar globalProgress;
  private LinearLayout statsGrid, appListRows, artModeSummary;
@@ -39,11 +39,9 @@ public class MainActivity extends Activity {
  private volatile int scanDone=0,scanTotal=0;
  private volatile String phase="";
  private Spinner global,period;
- private Switch automatic,backendToggle;
- private volatile boolean backendStatusPending=false;private long lastBackendPoll=0L;
+ private Switch automatic;
  private CheckBox autoUserApps,autoSystemApps;
- private TextView taskStatus,backendProgressText,backendCurrentText,backendCountsText;
- private ProgressBar backendProgress;
+ private TextView taskStatus;
  private Button stopTaskButton,userAppTab,systemAppTab;
  private Spinner appStatusFilter;
  private EditText appPackageSearch;
@@ -59,20 +57,6 @@ public class MainActivity extends Activity {
  private long lastDatabaseRevision=-1;
  private final Runnable taskPulse=new Runnable(){public void run(){
   Engine.recoverPending();refreshLogs();
-  if(BackendClient.enabled(MainActivity.this)&&!backendStatusPending&&android.os.SystemClock.elapsedRealtime()-lastBackendPoll>1400){
-    backendStatusPending=true;lastBackendPoll=android.os.SystemClock.elapsedRealtime();
-    pool.execute(()->{
-      String status=BackendClient.status();
-      String log=BackendClient.logs();
-      BackendClient.importHistory(getApplicationContext(),log);
-      ui.post(()->{
-        backendStatusPending=false;
-        if(backendState!=null)backendState.setText("KernelSU 后台："+status);
-        updateBackendProgress(status);
-        if(backendToggle!=null&&BackendClient.enabled(MainActivity.this))backendToggle.setChecked(true);
-      });
-    });
-  }
   if(Store.historyRevision()!=lastHistoryRevision){lastHistoryRevision=Store.historyRevision();showHistory();}
   if(ArtDatabase.revision()!=lastDatabaseRevision && !dbRefreshPending && !Engine.scanning()){
    dbRefreshPending=true;dbRequestedRevision=ArtDatabase.revision();
@@ -138,27 +122,7 @@ public class MainActivity extends Activity {
   statCard.addView(artModeSummary,new LinearLayout.LayoutParams(-1,-2));
   LinearLayout globalCard=card("全局默认编译模式");LinearLayout modeLine=new LinearLayout(this);modeLine.setGravity(Gravity.CENTER_VERTICAL);globalCard.addView(modeLine,new LinearLayout.LayoutParams(-1,dp(48)));global=modeSpinner(Store.global(this));modeLine.addView(global,new LinearLayout.LayoutParams(0,dp(48),1));Button saveGlobal=makeButton("保存",()->{String mode=Store.FILTERS[global.getSelectedItemPosition()];Store.global(this,mode);toast("全局模式已保存"+("everything".equals(mode)?"；设备支持情况待验证":""));updateStats();showGroups();},true);LinearLayout.LayoutParams gbutton=new LinearLayout.LayoutParams(dp(88),dp(42));gbutton.setMargins(dp(10),0,0,0);modeLine.addView(saveGlobal,gbutton);globalCard.addView(smallLabel("未加入自定义分组的应用使用全局模式；everything 为实验性选项，Android 16 可能拒绝。"));
 
-  heading("后台执行引擎");
-  LinearLayout backendCard=card(null);
-  backendToggle=new Switch(this);backendToggle.setText("使用 KernelSU 后台引擎（实验性）");
-  backendToggle.setTextSize(13);backendToggle.setChecked(BackendClient.enabled(this));
-  backendCard.addView(backendToggle);
-  backendState=smallLabel("未检测");
-  backendCard.addView(backendState);
-  Button resumeButton=makeButton("恢复已暂停的后台任务",()->pool.execute(()->{boolean ok=BackendClient.resume();ui.post(()->toast(ok?"已恢复后台暂停任务":"后台未响应或模块不可用"));}),false);
-  backendCard.addView(resumeButton,new LinearLayout.LayoutParams(-1,dp(42)));
-  backendToggle.setOnCheckedChangeListener((button,checked)->{
-   if(Engine.busy()){button.setChecked(!checked);toast("请先完成当前任务");return;}
-   pool.execute(()->{boolean available=BackendClient.available();ui.post(()->{
-    if(checked&&!available){backendToggle.setChecked(false);toast("未检测到 KernelSU 后台模块，请安装模块 ZIP 并启动服务");return;}
-    BackendClient.enabled(this,checked);backendState.setText(checked?"KernelSU 后台模式已启用":"APK Root 引擎模式");
-   });});
-  });
-  pool.execute(()->{boolean available=BackendClient.available();ui.post(()->backendState.setText(available?"后台模块可连接 · "+(BackendClient.enabled(this)?"已启用":"未启用"):"未安装或未启动模块"));});
-  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);backendProgressText=text("后台进度 · 尚无任务",13);running.addView(backendProgressText);
-  backendProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);backendProgress.setMax(100);backendProgress.setProgressTintList(ColorStateList.valueOf(ACCENT));running.addView(backendProgress,new LinearLayout.LayoutParams(-1,dp(7)));
-  backendCurrentText=smallLabel("当前应用：—");running.addView(backendCurrentText);
-  backendCountsText=smallLabel("达标 0 · 未达标 0 · 失败 0 · 跳过 0");running.addView(backendCountsText);stopTaskButton=makeButton("停止当前任务",()->{if(BackendClient.enabled(this)){pool.execute(()->{boolean ok=BackendClient.stop();ui.post(()->toast(ok?"已向后台发送停止请求":"后台未响应"));});}else if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
+  heading("当前任务");LinearLayout running=card(null);taskStatus=text("● 空闲 · 无正在执行的任务",14);running.addView(taskStatus);stopTaskButton=makeButton("停止当前任务",()->{if(Engine.busy()){Engine.stop();toast("已发送停止请求，将中止后续操作");updateTaskState();}else toast("当前没有运行中的任务");},false);running.addView(stopTaskButton,new LinearLayout.LayoutParams(-1,dp(42)));updateTaskState();
   heading("快捷操作");LinearLayout quick=card(null);doubleButtons(quick,"编译全部应用",()->{if(blocked())return;styledDialog().setTitle("全量编译确认").setMessage("强制编译全部目标应用可能造成发热及存储占用，建议充电时执行。") .setNegativeButton("取消",null).setPositiveButton("开始",(d,w)->{nextScope="编译全部应用";start(false,null);}).show();},"刷新全局 ART",()->confirmArtScan());
   page=screens[1];LinearLayout manage=card(null);
   LinearLayout operationRow=new LinearLayout(this);operationRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -392,19 +356,9 @@ private void openArtModeApplications(boolean system,String mode){
  switchPage(1);showApps();
  toast((system?"系统应用":"用户应用")+" · "+mode+"（点击应用页分类可切换，模式筛选保留）");
 }
- private void updateBackendProgress(String raw){
-  if(backendProgressText==null||!BackendClient.enabled(this))return;
-  java.util.Map<String,String> fields=BackendClient.parseStatus(raw);
-  String phase=raw.startsWith("running")?"正在编译":raw.startsWith("completed")?"编译完成":raw.startsWith("stopped")?"已暂停":raw.startsWith("idle")?"后台空闲":"后台离线";
-  int done=BackendClient.number(fields,"done"),total=BackendClient.number(fields,"total");
-  backendProgress.setProgress(total>0?Math.min(100,done*100/total):0);
-  backendProgressText.setText(phase+" · "+done+"/"+total+(total>0?" ("+(done*100/total)+"%)":""));
-  backendCurrentText.setText("当前应用："+fields.getOrDefault("pkg","—")+" · 模式："+fields.getOrDefault("mode","—"));
-  backendCountsText.setText("达标 "+fields.getOrDefault("ok","0")+" · 未达标 "+fields.getOrDefault("unmatched","0")+" · 失败 "+fields.getOrDefault("failed","0")+" · 跳过 "+fields.getOrDefault("skipped","0"));
- }
  private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean pending=Engine.pending()&&!scanningNow;
  boolean compiling=Engine.compiling()&&!scanningNow;
- boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){boolean backendEnabled=BackendClient.enabled(this);stopTaskButton.setEnabled(backendEnabled||scanningNow||compiling||pending);stopTaskButton.setAlpha(backendEnabled||scanningNow||compiling||pending?1f:.45f);}}
+ boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling||pending);stopTaskButton.setAlpha(scanningNow||compiling||pending?1f:.45f);}}
  private List<String> groupMismatch(JSONObject group){List<String> mismatch=new ArrayList<>();JSONArray pk=group.optJSONArray("packages");if(pk==null)return mismatch;String mode=group.optString("mode");for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry st=artStates.get(pkg);if(st!=null&&st.known&&!ArtState.matches(st,mode))mismatch.add(pkg);}return mismatch;}
  private void refreshGroup(JSONObject group){JSONArray pk=group.optJSONArray("packages");if(pk==null)return;if(blocked())return;styledDialog().setTitle("确认刷新分组 ART 状态").setMessage("即将查询本组 "+pk.length()+" 个应用的实时 ART 状态，期间无法启动编译或其他扫描。") .setNegativeButton("取消",null).setPositiveButton("刷新",(d,w)->runGroupScan(pk)).show();}
  private void scanSelectedArt(List<String> targets){
