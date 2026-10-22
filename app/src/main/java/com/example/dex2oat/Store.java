@@ -16,6 +16,12 @@ final class Store {
  static void interval(Context c,int h){pref(c).edit().putInt("interval",h).apply();}
  static boolean auto(Context c){return pref(c).getBoolean("auto",false);}
  static void auto(Context c,boolean b){pref(c).edit().putBoolean("auto",b).apply();}
+ static long autoLastStart(Context c){return pref(c).getLong("auto_last_start",0L);}
+ static synchronized boolean claimAutoWindow(Context c){
+  long now=System.currentTimeMillis(),last=autoLastStart(c),period=Math.max(1,interval(c))*3600000L;
+  if(last>0&&now>=last&&now-last<period)return false;
+  return pref(c).edit().putLong("auto_last_start",now).commit();
+ }
  static boolean autoUsers(Context c){return pref(c).getBoolean("auto_users",true);}
  static boolean autoSystems(Context c){return pref(c).getBoolean("auto_systems",false);}
  static void autoTargets(Context c,boolean users,boolean systems){pref(c).edit().putBoolean("auto_users",users).putBoolean("auto_systems",systems).commit();}

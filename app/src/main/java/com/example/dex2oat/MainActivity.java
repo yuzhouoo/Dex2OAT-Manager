@@ -41,6 +41,10 @@ public class MainActivity extends Activity {
  private CheckBox autoUserApps,autoSystemApps;
  private TextView taskStatus;
  private Button stopTaskButton,userAppTab,systemAppTab;
+ private Spinner appStatusFilter;
+ private EditText appPackageSearch;
+ private int appStateSelection=0;
+ private String appSearchText="";
  private boolean systemTab=false;
  private final Handler taskHandler=new Handler(Looper.getMainLooper());
  private boolean watchedServiceTask=false;
@@ -120,6 +124,30 @@ public class MainActivity extends Activity {
   LinearLayout selectLine=new LinearLayout(this);selectLine.setGravity(Gravity.CENTER_VERTICAL);manage.addView(selectLine,new LinearLayout.LayoutParams(-1,dp(43)));
   classSelect=new CheckBox(this);classSelect.setButtonTintList(ColorStateList.valueOf(ACCENT));selectLine.addView(classSelect);classCounter=smallLabel("");selectLine.addView(classCounter,new LinearLayout.LayoutParams(0,-2,1));
   classSelect.setOnClickListener(v->{boolean on=classSelect.isChecked();for(PackageInfo a:filtered()){if(on)selected.add(a.packageName);else selected.remove(a.packageName);}showApps();});
+  LinearLayout filterLine=new LinearLayout(this);filterLine.setGravity(Gravity.CENTER_VERTICAL);manage.addView(filterLine,new LinearLayout.LayoutParams(-1,dp(48)));
+  TextView filterTitle=smallLabel("状态筛选");filterLine.addView(filterTitle,new LinearLayout.LayoutParams(dp(72),-2));
+  appStatusFilter=new Spinner(this);
+  appStatusFilter.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"全部","已达标","未达标"}));
+  appStatusFilter.setSelection(0);filterLine.addView(appStatusFilter,new LinearLayout.LayoutParams(0,dp(48),1));
+  appStatusFilter.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+   public void onNothingSelected(android.widget.AdapterView<?> parent){}
+   public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){if(appStateSelection!=position){appStateSelection=position;userScroll=0;systemScroll=0;showApps();}}
+  });
+  appPackageSearch=new EditText(this);appPackageSearch.setSingleLine(true);appPackageSearch.setTextSize(13);
+  appPackageSearch.setHint("按包名搜索当前分类及状态");appPackageSearch.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+  manage.addView(appPackageSearch,new LinearLayout.LayoutParams(-1,dp(48)));
+  appPackageSearch.addTextChangedListener(new android.text.TextWatcher(){
+   public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+   public void onTextChanged(CharSequence s,int start,int before,int count){appSearchText=s.toString().trim().toLowerCase(java.util.Locale.ROOT);userScroll=0;systemScroll=0;showApps();}
+   public void afterTextChanged(android.text.Editable e){}
+  });
+  Button refreshSelected=makeButton("刷新选中应用 ART 状态",()->{
+   if(blocked())return;
+   if(selected.isEmpty()){toast("请先选择需要刷新的应用");return;}
+   List<String> target=new ArrayList<>(selected);Collections.sort(target);
+   styledDialog().setTitle("刷新选中应用 ART").setMessage("仅查询已选中的 "+target.size()+" 个应用，不执行编译。")
+    .setNegativeButton("取消",null).setPositiveButton("开始刷新",(d,w)->scanSelectedArt(target)).show();
+  },false);manage.addView(refreshSelected,new LinearLayout.LayoutParams(-1,dp(44)));
   appsList=createList(manage,440);
   page=screens[2];
   LinearLayout autoCard=card(null);automatic=new Switch(this);automatic.setText("开启自动周期扫描");automatic.setTextSize(14);automatic.setChecked(Store.auto(this));autoCard.addView(automatic);
@@ -166,7 +194,15 @@ public class MainActivity extends Activity {
  }
  private void confirmReset(List<String> target){if(blocked())return;if(target.isEmpty()){toast("请先选择应用");return;}styledDialog().setTitle("确认重置编译").setMessage("将对选中的 "+target.size()+" 个应用执行 pm compile --reset。不会清除应用数据，但将改变 ART 优化状态。") .setNegativeButton("取消",null).setPositiveButton("重置",(d,w)->{if(blocked())return;if(!Engine.reserveTask()){taskBlocked();return;}toast("正在启动重置任务");launchCompileService(target,true,false,"重置选中应用");}).show();}
  private boolean isSystemApp(PackageInfo p){return p.applicationInfo!=null&&(p.applicationInfo.flags&(ApplicationInfo.FLAG_SYSTEM|ApplicationInfo.FLAG_UPDATED_SYSTEM_APP))!=0;}
- private List<PackageInfo> filtered(){List<PackageInfo> list=new ArrayList<>();PackageManager pm=getPackageManager();for(PackageInfo p:packages){if(p.applicationInfo==null||isSystemApp(p)!=systemTab)continue;String name=String.valueOf(pm.getApplicationLabel(p.applicationInfo));list.add(p);}return list;}
+ private List<PackageInfo> filtered(){List<PackageInfo> list=new ArrayList<>();for(PackageInfo p:packages){
+  if(p.applicationInfo==null||isSystemApp(p)!=systemTab)continue;
+  ArtState.Entry state=artStates.get(p.packageName);
+  boolean match=state!=null&&ArtState.matches(state,Store.chosenMode(this,p.packageName));
+  if(appStateSelection==1&&!match)continue;
+  if(appStateSelection==2&&(state==null||!state.known||match))continue;
+  if(!appSearchText.isEmpty()&&!p.packageName.toLowerCase(java.util.Locale.ROOT).contains(appSearchText))continue;
+  list.add(p);
+ }return list;}
  private RecyclerView createList(LinearLayout host,int height){RecyclerView v=new RecyclerView(this);v.setLayoutManager(new LinearLayoutManager(this));v.setNestedScrollingEnabled(true);v.setHasFixedSize(true);v.setVerticalScrollBarEnabled(true);v.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);v.setOnTouchListener((view,e)->{if(e.getActionMasked()==MotionEvent.ACTION_DOWN)view.getParent().requestDisallowInterceptTouchEvent(true);if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);return false;});host.addView(v,new LinearLayout.LayoutParams(-1,dp(height)));return v;}
  private interface RowFactory{View make(int index);}
  private static final class RowHolder extends RecyclerView.ViewHolder{final android.widget.FrameLayout container;RowHolder(android.widget.FrameLayout c){super(c);container=c;}}
@@ -233,6 +269,22 @@ public class MainActivity extends Activity {
  boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?(live.running?live.title+" · "+live.done+"/"+live.total:"正在执行编译 / 重置任务"):pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling||pending);stopTaskButton.setAlpha(scanningNow||compiling||pending?1f:.45f);}}
  private List<String> groupMismatch(JSONObject group){List<String> mismatch=new ArrayList<>();JSONArray pk=group.optJSONArray("packages");if(pk==null)return mismatch;String mode=group.optString("mode");for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry st=artStates.get(pkg);if(st!=null&&st.known&&!ArtState.matches(st,mode))mismatch.add(pkg);}return mismatch;}
  private void refreshGroup(JSONObject group){JSONArray pk=group.optJSONArray("packages");if(pk==null)return;if(blocked())return;styledDialog().setTitle("确认刷新分组 ART 状态").setMessage("即将查询本组 "+pk.length()+" 个应用的实时 ART 状态，期间无法启动编译或其他扫描。") .setNegativeButton("取消",null).setPositiveButton("刷新",(d,w)->runGroupScan(pk)).show();}
+ private void scanSelectedArt(List<String> targets){
+  if(!Engine.beginScan()){taskBlocked();return;}
+  scanning=true;scanDone=0;scanTotal=targets.size();phase="正在刷新选中应用 ART";updateTaskState();
+  pool.execute(()->{try{
+   for(String pkg:targets){
+    if(Engine.scanCancelled())break;
+    ArtState.Entry entry=ArtState.query(pkg);
+    artStates.put(pkg,entry);
+    ArtDatabase.get(getApplicationContext()).update(getApplicationContext(),pkg,entry,"selected-scan",null);
+    scanDone++;if(scanDone%4==0)ui.post(this::updateTaskState);
+   }
+  }finally{
+   scanning=false;Engine.endScan();phase="";
+   ui.post(()->{showApps();showGroups();updateStats();updateTaskState();toast("选中应用 ART 刷新结束："+scanDone+"/"+scanTotal);});
+  }});
+ }
  private void runGroupScan(JSONArray pk){if(!Engine.beginScan()){taskBlocked();return;}scanDone=0;scanTotal=pk.length();scanning=true;phase="正在刷新分组 ART 状态";updateTaskState();pool.execute(()->{try{for(int i=0;i<pk.length();i++){if(Engine.scanCancelled())break;String pkg=pk.optString(i);ArtState.Entry item=ArtState.query(pkg);artStates.put(pkg,item);ArtDatabase.get(getApplicationContext()).update(getApplicationContext(),pkg,item,"group-scan",null);scanDone++;}}finally{scanning=false;Engine.endScan();phase="";ui.post(()->{showGroups();updateStats();updateTaskState();toast("分组状态刷新完成");});}}); }
  private void confirmArtScan(){if(blocked())return;styledDialog().setTitle("确认刷新全局 ART").setMessage("即将查询全部 "+packages.size()+" 个应用的 ART 状态。刷新过程中仍可浏览和选择应用。") .setNegativeButton("取消",null).setPositiveButton("开始刷新",(d,w)->scanArt()).show();}
  private void confirmCompile(boolean incremental,List<String> target){if(blocked())return;int n=target==null?packages.size():target.size();styledDialog().setTitle(incremental?"确认增量编译":"确认编译").setMessage("目标："+n+" 个应用。执行前会按当前策略检查，开始后使用已确定的包名快照。") .setNegativeButton("取消",null).setPositiveButton("确认执行",(d,w)->{nextScope=incremental?"扫描增量应用":"编译选中应用";start(incremental,target);}).show();}
