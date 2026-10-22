@@ -59,8 +59,8 @@ final class Engine {
  }
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,"手动执行",reset?"重置":"编译应用");}
  private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope){
-  if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;}}
-  if(!reserved)STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
+  if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;COMPILING=true;}}
+  if(!reserved)STOP=false;long started=System.currentTimeMillis();if(!reserved)TaskRuntime.begin("自动执行 · "+scope,0);int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
    List<PackageInfo> installed=Store.installedAll(context);Map<String,PackageInfo> byPkg=new HashMap<>();for(PackageInfo p:installed)byPkg.put(p.packageName,p);
    List<String> pkgs=new ArrayList<>();if(targets==null){for(PackageInfo pi:Store.installed(context))pkgs.add(pi.packageName);}else {LinkedHashSet<String> unique=new LinkedHashSet<>(targets);for(String p:unique){if(byPkg.containsKey(p))pkgs.add(p);else {missing++;addDetail(details,p,"","missing",-1,"应用已卸载或不可见：开始前无法找到安装包");}}}
@@ -98,6 +98,6 @@ final class Engine {
    if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}
-  finally{synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
+  finally{if(!reserved)TaskRuntime.finish("自动任务结束");synchronized(Engine.class){COMPILING=false;BUSY.set(false);}ACTIVE=null;}
  }
 }
