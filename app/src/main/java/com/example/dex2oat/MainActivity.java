@@ -151,31 +151,50 @@ public class MainActivity extends Activity {
 
  private void showMetricDetails(int category){
   final String[] names={"全部应用","已完成应用","待处理应用","状态未知应用"};
-  List<PackageInfo> rows=new ArrayList<>();
+  final List<PackageInfo> users=new ArrayList<>(),systems=new ArrayList<>();
   for(PackageInfo pi:packages){
    ArtState.Entry state=artStates.get(pi.packageName);
    boolean unknown=state==null||!state.known;
    boolean matched=!unknown&&ArtState.matches(state,Store.chosenMode(this,pi.packageName));
-   if(category==0||(category==1&&matched)||(category==2&&!unknown&&!matched)||(category==3&&unknown))rows.add(pi);
+   if(category!=0&&!(category==1&&matched)&&!(category==2&&!unknown&&!matched)&&!(category==3&&unknown))continue;
+   (isSystemApp(pi)?systems:users).add(pi);
   }
-  LinearLayout content=vertical();content.setPadding(dp(12),dp(6),dp(12),dp(8));
-  TextView amount=smallLabel("共 "+rows.size()+" 个应用 · 仅查看当前缓存状态");content.addView(amount);
-  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);LinearLayout entries=vertical();scroll.addView(entries);
-  PackageManager pm=getPackageManager();
-  for(PackageInfo pi:rows){
-   LinearLayout line=new LinearLayout(this);line.setGravity(Gravity.CENTER_VERTICAL);line.setPadding(dp(5),dp(7),dp(5),dp(7));
-   ImageView icon=new ImageView(this);try{icon.setImageDrawable(pm.getApplicationIcon(pi.applicationInfo));}catch(Exception ex){icon.setImageResource(android.R.drawable.sym_def_app_icon);}
-   LinearLayout.LayoutParams iconParams=new LinearLayout.LayoutParams(dp(30),dp(30));iconParams.setMargins(0,0,dp(9),0);line.addView(icon,iconParams);
-   LinearLayout words=vertical();line.addView(words,new LinearLayout.LayoutParams(0,-2,1));
-   TextView title=text(String.valueOf(pm.getApplicationLabel(pi.applicationInfo)),13);title.setTypeface(null,Typeface.BOLD);title.setPadding(0,0,0,0);words.addView(title);
-   TextView pkg=smallLabel(pi.packageName);pkg.setTextSize(10);pkg.setPadding(0,0,0,0);words.addView(pkg);
-   ArtState.Entry st=artStates.get(pi.packageName);String actual=st==null||!st.known?"未知":st.filter;
-   TextView filter=smallLabel("当前："+actual+"  ·  目标："+Store.chosenMode(this,pi.packageName));filter.setPadding(0,0,0,0);words.addView(filter);
-   entries.addView(line,new LinearLayout.LayoutParams(-1,-2));divider(entries);
-  }
-  if(rows.isEmpty())entries.addView(smallLabel("当前分类下没有应用"));
-  content.addView(scroll,new LinearLayout.LayoutParams(-1,dp(430)));
-  styledDialog().setTitle(names[category]+"（"+rows.size()+"）").setView(content).setPositiveButton("关闭",null).show();
+  LinearLayout body=vertical();body.setPadding(dp(12),dp(6),dp(12),dp(8));
+  LinearLayout tabs=new LinearLayout(this);tabs.setPadding(dp(3),dp(3),dp(3),dp(3));tabs.setBackground(shape(0xffEEF2FF,0,13));
+  LinearLayout.LayoutParams tabsLp=new LinearLayout.LayoutParams(-1,dp(48));tabsLp.setMargins(0,0,0,dp(8));body.addView(tabs,tabsLp);
+  Button userButton=makeButton("用户应用 ("+users.size()+")",()->{},true);
+  Button systemButton=makeButton("系统应用 ("+systems.size()+")",()->{},false);
+  LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,-1,1);left.setMargins(0,0,dp(1),0);
+  LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-1,1);right.setMargins(dp(1),0,0,0);
+  tabs.addView(userButton,left);tabs.addView(systemButton,right);
+  TextView amount=smallLabel("");body.addView(amount);
+  RecyclerView listing=createList(body,420);
+  listing.setItemAnimator(null);
+  final boolean[] showingSystem={false};
+  Runnable render=()->{
+   boolean sys=showingSystem[0];final List<PackageInfo> active=sys?systems:users;
+   userButton.setTextColor(sys?ACCENT:Color.WHITE);userButton.setBackground(clickShape(sys?0xffEEF2FF:ACCENT,0,10));
+   systemButton.setTextColor(sys?Color.WHITE:ACCENT);systemButton.setBackground(clickShape(sys?ACCENT:0xffEEF2FF,0,10));
+   amount.setText("当前显示 "+active.size()+" 个应用 · 仅查看 ART 缓存状态");
+   listing.setAdapter(adapter(active.size(),position->{
+    PackageInfo pi=active.get(position);PackageManager pm=getPackageManager();
+    LinearLayout line=new LinearLayout(this);line.setGravity(Gravity.CENTER_VERTICAL);line.setPadding(dp(5),dp(7),dp(5),dp(7));
+    ImageView icon=new ImageView(this);try{icon.setImageDrawable(pm.getApplicationIcon(pi.applicationInfo));}
+    catch(Exception ex){icon.setImageResource(android.R.drawable.sym_def_app_icon);}
+    LinearLayout.LayoutParams iconParams=new LinearLayout.LayoutParams(dp(30),dp(30));iconParams.setMargins(0,0,dp(9),0);line.addView(icon,iconParams);
+    LinearLayout words=vertical();line.addView(words,new LinearLayout.LayoutParams(0,-2,1));
+    TextView title=text(String.valueOf(pm.getApplicationLabel(pi.applicationInfo)),13);title.setTypeface(null,Typeface.BOLD);title.setPadding(0,0,0,0);words.addView(title);
+    TextView pkg=smallLabel(pi.packageName);pkg.setTextSize(10);pkg.setPadding(0,0,0,0);words.addView(pkg);
+    ArtState.Entry st=artStates.get(pi.packageName);String actual=st==null||!st.known?"未知":st.filter;
+    TextView filter=smallLabel("当前："+actual+"  ·  目标："+Store.chosenMode(this,pi.packageName));filter.setPadding(0,0,0,0);words.addView(filter);
+    return line;
+   }));
+   listing.scrollToPosition(0);
+  };
+  userButton.setOnClickListener(v->{if(showingSystem[0]){showingSystem[0]=false;render.run();}});
+  systemButton.setOnClickListener(v->{if(!showingSystem[0]){showingSystem[0]=true;render.run();}});
+  render.run();
+  styledDialog().setTitle(names[category]+"（"+(users.size()+systems.size())+"）").setView(body).setPositiveButton("关闭",null).show();
  }
  private void updateStats(){if(stats==null)return;JSONObject marks=Store.marks(this);int historical=0,matched=0,unknown=0;for(PackageInfo p:packages){String wanted=Store.chosenMode(this,p.packageName);if((Store.fingerprint(p)+"|"+wanted).equals(marks.optString(p.packageName)))historical++;ArtState.Entry st=artStates.get(p.packageName);if(st==null||!st.known)unknown++;else if(ArtState.matches(st,wanted))matched++;}renderMetrics(packages.size(),matched,packages.size()-matched-unknown,unknown);stats.setText("历史成功记录："+historical+" 个  ·  实时状态以 ART 查询为准");}
  private void updateTaskState(){if(taskStatus==null)return;boolean scanningNow=Engine.scanning();TaskRuntime.Snapshot live=TaskRuntime.snapshot();boolean compiling=live.running;boolean pending=Engine.busy()&&!scanningNow&&!compiling;boolean busy=scanningNow||compiling||pending;String status=scanningNow?(phase.isEmpty()?"正在扫描 ART 状态":phase)+" · "+scanDone+"/"+scanTotal:compiling?live.title+" · "+live.done+"/"+live.total:pending?"正在准备任务":"当前空闲 · 可执行操作";taskStatus.setText(status);taskStatus.setTextColor(busy?0xffBA721E:0xff188269);if(globalTaskLabel!=null){globalTaskLabel.setText((busy?"● ":"✓ ")+status);globalTaskLabel.setTextColor(busy?0xffA96721:0xff16866F);}if(globalProgress!=null){globalProgress.setVisibility(busy?View.VISIBLE:View.GONE);globalProgress.setIndeterminate(compiling&&(!live.running||live.total==0));if(compiling&&live.running&&live.total>0)globalProgress.setProgress(live.done*100/live.total);if(scanningNow){globalProgress.setIndeterminate(false);globalProgress.setProgress(scanTotal<=0?0:scanDone*100/scanTotal);}}if(stopTaskButton!=null){stopTaskButton.setEnabled(scanningNow||compiling);stopTaskButton.setAlpha(scanningNow||compiling?1f:.45f);}}
