@@ -28,5 +28,6 @@ final class TaskRuntime {
  static synchronized void line(String message){if(message==null)return;String v=message.length()>350?message.substring(0,350):message;messages.addFirst(new java.text.SimpleDateFormat("HH:mm:ss",java.util.Locale.getDefault()).format(new java.util.Date())+"  "+v);while(messages.size()>LIMIT)messages.removeLast();revision++;}
  static synchronized long revision(){return revision;}
  static synchronized void abort(String reason){if(!running){title="当前空闲";current=reason;}else finish(reason);}
+ static synchronized void clearLogs(){messages.clear();revision++;}
  static synchronized List<String> logs(){return new ArrayList<>(messages);}
 }
