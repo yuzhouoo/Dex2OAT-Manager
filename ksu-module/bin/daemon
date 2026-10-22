@@ -18,35 +18,50 @@ while :;do
   rm -f "$ROOT/stop"
   TYPE="$(sed -n '1p' "$ROOT/current.job")"
   MODE="$(sed -n '2p' "$ROOT/current.job")"
-  ID="${JOB##*/}"; N=0; OK=0; FAIL=0; SKIP=0
-  setstatus "running $ID"
+  ID="${JOB##*/}"; N=0; OK=0; FAIL=0; SKIP=0; MISMATCH=0
+  TOTAL=$(( $(wc -l < "$ROOT/current.job") - 2 )); setstatus "running id=$ID done=0 total=$TOTAL ok=0 failed=0 skipped=0 unmatched=0"
   log "start $ID $TYPE $MODE"
   # Persist unprocessed entries after every app: interruption can resume.
   while test "$(wc -l < "$ROOT/current.job")" -gt 2;do
     if test -e "$ROOT/stop";then log "stopped $ID";break;fi
     PKG="$(sed -n '3p' "$ROOT/current.job")"
     case "$PKG" in ''|*[!a-zA-Z0-9_.]*) log "invalid package";break;;esac
-    N=$((N+1)); setstatus "running $ID $N $PKG $MODE"
+    setstatus "running id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH pkg=$PKG mode=$MODE"
     ART="$(cmd package art dump "$PKG" 2>/dev/null)"
     test -n "$ART" || ART="$(pm art dump "$PKG" 2>/dev/null)"
     PRIMARY="$(printf '%s\n' "$ART" | sed '/known secondary dex files:/,$d' | sed -n 's/.*\[status=\([^]]*\)\].*/\1/p' | sort -u)"
-    RESULT=failed
-    if test "$TYPE" = incremental && test "$PRIMARY" = "$MODE";then RESULT=skipped;SKIP=$((SKIP+1))
+    RESULT=failed; COMMAND=not-run; AFTER_MODE="$PRIMARY"; CMD_RESULT=""
+    if test "$TYPE" = incremental && test "$PRIMARY" = "$MODE";then
+      RESULT=skipped;SKIP=$((SKIP+1))
     else
-      if test "$TYPE" = reset;then OUT="$(cmd package compile --reset "$PKG" 2>&1)";else OUT="$(cmd package compile -m "$MODE" -f "$PKG" 2>&1)";fi
-      case "$OUT" in *Success*) RESULT=success;OK=$((OK+1));; *) FAIL=$((FAIL+1));; esac
-      if test "$TYPE" != reset;then
-        AFTER="$(cmd package art dump "$PKG" 2>/dev/null)"
-        printf '%s\n' "$AFTER" | grep -q 'known secondary dex files:' && cmd package compile -m "$MODE" -f --secondary-dex "$PKG" >/dev/null 2>&1
+      if test "$TYPE" = reset;then CMD_RESULT="$(cmd package compile --reset "$PKG" 2>&1)";else CMD_RESULT="$(cmd package compile -m "$MODE" -f "$PKG" 2>&1)";fi
+      case "$CMD_RESULT" in *Success*) COMMAND=success;; *) COMMAND=failed;; esac
+      ACTUAL="$(cmd package art dump "$PKG" 2>/dev/null)"
+      test -n "$ACTUAL" || ACTUAL="$(pm art dump "$PKG" 2>/dev/null)"
+      AFTER_MODE="$(printf '%s\n' "$ACTUAL" | sed '/known secondary dex files:/,$d' | sed -n 's/.*\[status=\([^]]*\)\].*/\1/p' | sort -u)"
+      test -n "$AFTER_MODE" || AFTER_MODE=unknown
+      if test "$TYPE" = reset;then
+        if test "$COMMAND" = success;then RESULT=success;OK=$((OK+1));else FAIL=$((FAIL+1));fi
+      elif test "$COMMAND" = success && test "$AFTER_MODE" = "$MODE";then
+        RESULT=success;OK=$((OK+1))
+      elif test "$COMMAND" = success;then
+        RESULT=not_matched;MISMATCH=$((MISMATCH+1))
+      else
+        FAIL=$((FAIL+1))
+      fi
+      if test "$TYPE" != reset && printf '%s\n' "$ACTUAL" | grep -q 'known secondary dex files:';then
+        cmd package compile -m "$MODE" -f --secondary-dex "$PKG" >/dev/null 2>&1
       fi
     fi
-    log "$ID $PKG $RESULT mode=$MODE primary=$PRIMARY"
+    N=$((N+1))
+    log "$ID $PKG $RESULT requested=$MODE before=$PRIMARY after=$AFTER_MODE command=$COMMAND"
+    setstatus "running id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH pkg=$PKG mode=$MODE"
     # Drop completed entry atomically; durable queue advances even if APK is closed.
     { sed -n '1,2p' "$ROOT/current.job"; sed -n '4,$p' "$ROOT/current.job"; } > "$ROOT/job.tmp"
     mv "$ROOT/job.tmp" "$ROOT/current.job"
   done
-  if test -e "$ROOT/stop";then setstatus "stopped $ID $N";else setstatus "completed $ID ok=$OK failed=$FAIL skipped=$SKIP";fi
-  log "$ID finished processed=$N ok=$OK failed=$FAIL skipped=$SKIP"
+  if test -e "$ROOT/stop";then setstatus "stopped id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH";else setstatus "completed id=$ID done=$N total=$TOTAL ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH";fi
+  log "$ID finished processed=$N ok=$OK failed=$FAIL skipped=$SKIP unmatched=$MISMATCH"
   mv "$ROOT/current.job" "$ROOT/done/$ID"
   rm -f "$ROOT/stop"
 done

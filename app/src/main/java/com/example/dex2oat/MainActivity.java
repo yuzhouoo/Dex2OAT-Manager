@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
  private volatile String phase="";
  private Spinner global,period;
  private Switch automatic,backendToggle;
+ private volatile boolean backendStatusPending=false;private long lastBackendPoll=0L;
  private CheckBox autoUserApps,autoSystemApps;
  private TextView taskStatus;
  private Button stopTaskButton,userAppTab,systemAppTab;
@@ -57,6 +58,17 @@ public class MainActivity extends Activity {
  private long lastDatabaseRevision=-1;
  private final Runnable taskPulse=new Runnable(){public void run(){
   Engine.recoverPending();refreshLogs();
+  if(BackendClient.enabled(MainActivity.this)&&!backendStatusPending&&android.os.SystemClock.elapsedRealtime()-lastBackendPoll>5000){
+    backendStatusPending=true;lastBackendPoll=android.os.SystemClock.elapsedRealtime();
+    pool.execute(()->{
+      String status=BackendClient.status();
+      ui.post(()->{
+        backendStatusPending=false;
+        if(backendState!=null)backendState.setText("KernelSU 后台："+status);
+        if(backendToggle!=null&&BackendClient.enabled(MainActivity.this))backendToggle.setChecked(true);
+      });
+    });
+  }
   if(Store.historyRevision()!=lastHistoryRevision){lastHistoryRevision=Store.historyRevision();showHistory();}
   if(ArtDatabase.revision()!=lastDatabaseRevision && !dbRefreshPending && !Engine.scanning()){
    dbRefreshPending=true;dbRequestedRevision=ArtDatabase.revision();

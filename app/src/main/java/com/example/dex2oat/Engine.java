@@ -119,11 +119,14 @@ final class Engine {
     ArtState.Entry after=secondaryResult==null?primaryAfter:ArtState.query(pkg);
     db.update(context,pkg,after,reset?"reset-verification":"compile-verification",String.valueOf(started));
     boolean verified=ArtState.matches(after,filter);
+    boolean commandSuccess=success;
+    // A command returning "Success" is not ART verification.
+    success=commandSuccess && (reset || verified);
     processed++;TaskRuntime.outcome(success);
     if(listener!=null)listener.update("ART 验证 "+pkg+"：当前 "+after.filter+"，目标 "+filter+"，"+(verified?"已达标":after.known?"未达标":"未知"));
     if(success){ok++;try{if(reset){marks.remove(pkg);}else{marks.put(pkg,key);if("speed-profile".equals(filter))Store.pref(context).edit().putLong("profile_attempt_"+pkg,System.currentTimeMillis()).apply();}Store.marks(context,marks);}catch(Exception ignored){}}else failed++;
-    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":"failed");detail.put("beforeArt",before==null?"未知":before.filter);detail.put("afterArt",after.filter);detail.put("artMatch",verified);detail.put("artKnown",after.known);detail.put("secondaryCount",after.secondaryCount);detail.put("secondarySummary",after.secondarySummary);detail.put("secondaryStatus",secondaryResult==null?"未执行":compileSuccess(secondaryResult)?"命令成功":"未完成或不支持");detail.put("verifiedAt",System.currentTimeMillis());detail.put("command","cmd package compile "+(reset?"--reset":"-m "+filter+" -f")+" "+pkg);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
-    if(listener!=null)listener.update((success?"成功 ":"失败 ")+pkg+"："+("everything".equals(filter)&&!success?"设备可能不支持 everything；请改用 speed。":"")+r.out.trim());
+    JSONObject detail=new JSONObject();try{detail.put("pkg",pkg);detail.put("mode",filter);detail.put("ok",success);detail.put("status",success?"success":commandSuccess&&!reset?"not_matched":"failed");detail.put("beforeArt",before==null?"未知":before.filter);detail.put("afterArt",after.filter);detail.put("commandSuccess",commandSuccess);detail.put("artMatch",verified);detail.put("artKnown",after.known);detail.put("secondaryCount",after.secondaryCount);detail.put("secondarySummary",after.secondarySummary);detail.put("secondaryStatus",secondaryResult==null?"未执行":compileSuccess(secondaryResult)?"命令成功":"未完成或不支持");detail.put("verifiedAt",System.currentTimeMillis());detail.put("command","cmd package compile "+(reset?"--reset":"-m "+filter+" -f")+" "+pkg);detail.put("code",r.code);detail.put("output",r.out.length()>800?r.out.substring(0,800):r.out);details.put(detail);}catch(Exception ignored){}
+    if(listener!=null)listener.update((success?"ART 已达标 ":commandSuccess&&!reset?"命令成功但 ART 未达标 ":"命令失败 ")+pkg+"：目标 "+filter+" · 实际 "+after.filter+" · "+r.out.trim());
    }
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
    int pending=pkgs.size()-processed;

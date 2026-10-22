@@ -63,11 +63,11 @@ jobs:
           set -euo pipefail
           chmod 0755 ksu-module/service.sh ksu-module/bin/control ksu-module/bin/daemon
           cd ksu-module
-          zip -q -r ../Dex2OAT-KernelSU-v2.0.0-beta1.zip module.prop service.sh skip_mount bin
+          zip -q -r ../Dex2OAT-KernelSU-v2.0.0-beta3.zip module.prop service.sh skip_mount bin
 
       - name: Upload KernelSU module
         uses: actions/upload-artifact@v4
         with:
           name: Dex2OAT-KernelSU-Backend
-          path: Dex2OAT-KernelSU-v2.0.0-beta1.zip
+          path: Dex2OAT-KernelSU-v2.0.0-beta3.zip
           if-no-files-found: error
