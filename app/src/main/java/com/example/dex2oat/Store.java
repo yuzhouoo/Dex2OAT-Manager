@@ -24,6 +24,13 @@ final class Store {
  static JSONArray history(Context c){return read(c,"history");}
  static JSONObject marks(Context c){try{return new JSONObject(pref(c).getString("marks","{}"));}catch(Exception e){return new JSONObject();}}
  static void marks(Context c,JSONObject o){pref(c).edit().putString("marks",o.toString()).commit();}
+ static int bootCount(Context c){try{return android.provider.Settings.Global.getInt(c.getContentResolver(),android.provider.Settings.Global.BOOT_COUNT);}catch(Exception e){return -1;}}
+ static boolean needsBootScan(Context c){int boot=bootCount(c);if(boot>=0)return pref(c).getInt("last_art_boot",-1)!=boot;long elapsed=android.os.SystemClock.elapsedRealtime();return pref(c).getLong("last_scan_elapsed",Long.MAX_VALUE)>elapsed;}
+ static synchronized java.util.Map<String,ArtState.Entry> loadArt(Context c){java.util.Map<String,ArtState.Entry> result=new java.util.HashMap<>();try{JSONObject data=new JSONObject(pref(c).getString("art_snapshot","{}"));java.util.Iterator<String> it=data.keys();while(it.hasNext()){String pkg=it.next();JSONObject o=data.optJSONObject(pkg);if(o!=null)result.put(pkg,new ArtState.Entry(pkg,o.optString("mode","未知"),"上次保存的 ART 扫描快照",o.optBoolean("known",false),o.optBoolean("mixed",false)));}}catch(Exception ignored){}return result;}
+ static synchronized void saveArt(Context c,java.util.Map<String,ArtState.Entry> states,boolean full){JSONObject data=new JSONObject();try{for(java.util.Map.Entry<String,ArtState.Entry> x:states.entrySet()){ArtState.Entry st=x.getValue();JSONObject d=new JSONObject();d.put("mode",st.filter);d.put("known",st.known);d.put("mixed",st.mixed);data.put(x.getKey(),d);}}catch(Exception ignored){}
+ android.content.SharedPreferences.Editor editor=pref(c).edit().putString("art_snapshot",data.toString()).putLong("art_saved_at",System.currentTimeMillis());
+ if(full){editor.putInt("last_art_boot",bootCount(c)).putLong("last_scan_elapsed",android.os.SystemClock.elapsedRealtime());}editor.commit();}
+ static boolean hasArtSnapshot(Context c){return pref(c).contains("art_snapshot");}
  static boolean validMode(String m){for(String a:FILTERS)if(a.equals(m))return true;return false;}
  static String chosenMode(Context c,String pkg){JSONArray a=groups(c);for(int i=0;i<a.length();i++){
   JSONObject g=a.optJSONObject(i);if(g==null)continue;JSONArray pk=g.optJSONArray("packages");if(pk==null)continue;

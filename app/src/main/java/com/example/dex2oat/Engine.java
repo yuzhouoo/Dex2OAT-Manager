@@ -38,14 +38,17 @@ final class Engine {
  static String shellQuote(String s){return "'"+s.replace("'","'\\''")+"'";}
  static boolean compileSuccess(Result r){String s=r.out.trim();return r.code==0 && (s.matches("(?s).*\\bSuccess\\b.*") || s.matches("(?s).*\\bSUCCESS\\b.*")) && !s.matches("(?s).*\\bFailure\\b.*");}
  static JSONObject run(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,false,0L);}
- static JSONObject runScheduled(Context context,Listener listener){return execute(context,true,null,false,listener,false,420000L);}
+ static JSONObject runScheduled(Context context,Listener listener){return execute(context,true,null,false,listener,false,420000L,"自动执行","周期增量编译");}
  static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener){return execute(context,incremental,targets,false,listener,true,0L);}
+ static JSONObject runReserved(Context context,boolean incremental,List<String> targets,Listener listener,String scope){return execute(context,incremental,targets,false,listener,true,0L,"手动执行",scope);}
  static JSONObject reset(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,false,0L);}
  static JSONObject resetReserved(Context context,List<String> targets,Listener listener){return execute(context,false,targets,true,listener,true,0L);}
+ static JSONObject resetReserved(Context context,List<String> targets,Listener listener,String scope){return execute(context,false,targets,true,listener,true,0L,"手动执行",scope);}
  private static void addDetail(JSONArray out,String pkg,String mode,String status,int code,String output){
   JSONObject d=new JSONObject();try{d.put("pkg",pkg);d.put("mode",mode);d.put("status",status);d.put("ok","success".equals(status));d.put("code",code);d.put("output",output);out.put(d);}catch(Exception ignored){}
  }
- private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){
+ private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs){return execute(context,incremental,targets,reset,listener,reserved,maxDurationMs,"手动执行",reset?"重置":"编译应用");}
+ private static JSONObject execute(Context context,boolean incremental,List<String> targets,boolean reset,Listener listener,boolean reserved,long maxDurationMs,String origin,String scope){
   if(!reserved){synchronized(Engine.class){if(!BUSY.compareAndSet(false,true))return null;}}
   STOP=false;long started=System.currentTimeMillis();int ok=0,failed=0,skipped=0,processed=0,missing=0;JSONArray details=new JSONArray();boolean timedOut=false;
   try{
@@ -73,7 +76,7 @@ final class Engine {
    }
    for(int j=processed;j<pkgs.size();j++){String pkg=pkgs.get(j);addDetail(details,pkg,Store.chosenMode(context,pkg),STOP?"cancelled":"pending",-1,STOP?"用户请求停止":timedOut?"自动周期运行时间上限，留待下次":"任务提前结束");}
    int pending=pkgs.size()-processed;
-   JSONObject record=new JSONObject();record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
+   JSONObject record=new JSONObject();record.put("origin",origin);record.put("scope",scope);record.put("source","手动执行".equals(origin)?"应用交互":"WorkManager 周期调度");record.put("destination","本地任务历史记录");record.put("requested",pkgs.size()+missing);record.put("processed",processed);record.put("pending",pending);record.put("missing",missing);record.put("time",started);record.put("duration",System.currentTimeMillis()-started);record.put("type",reset?"重置":incremental?"增量":"手动");record.put("success",ok);record.put("failed",failed);record.put("skipped",skipped);record.put("cancelled",STOP);record.put("batchLimited",timedOut);record.put("details",details);Store.record(context,record);
    if(listener!=null)listener.update("任务结束：总计 "+(pkgs.size()+missing)+"，已处理 "+processed+"，成功 "+ok+"，失败 "+failed+"，跳过 "+skipped+"，未处理 "+pending+"，不可见 "+missing+"，耗时 "+((System.currentTimeMillis()-started)/1000)+" 秒"+(STOP?"（已中止）":""));
    return record;
   }catch(Exception e){if(listener!=null)listener.update("任务异常："+e);return null;}
